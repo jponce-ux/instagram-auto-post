@@ -23,20 +23,20 @@ git checkout -b feat/006-auth-argon2-jwt
 
 ## 📝 Criterios de Aceptación
 
-- [ ] Contraseñas hasheadas con Argon2 ID.
-- [ ] JWT con expiración de 60 minutos entregado vía HTTP-Only Cookie.
+- [x] Contraseñas hasheadas con Argon2 ID.
+- [x] JWT con expiración de 60 minutos entregado vía HTTP-Only Cookie.
 
 ---
 
 ## 🛠️ Lista de Tareas (Tasks)
 
-- [ ] Crear la rama `feat/006-auth-argon2-jwt` desde la rama principal.
-- [ ] Crear el modelo `User` en `app/models/user.py`.
-- [ ] Implementar `app/auth/security.py`: funciones de hash (Argon2) y creación de tokens (JWT).
-- [ ] Crear el endpoint `POST /auth/register` con validación de email único.
-- [ ] Crear el endpoint `POST /auth/login` que valide y emita la cookie `access_token`.
-- [ ] Implementar la dependencia `get_current_user` para proteger rutas.
-- [ ] Crear una migración de Alembic para la tabla de usuarios: `uv run alembic revision --autogenerate -m "create_user_table"`.
+- [x] Crear la rama `feat/006-auth-argon2-jwt` desde la rama principal.
+- [x] Crear el modelo `User` en `app/models/user.py`.
+- [x] Implementar `app/auth/security.py`: funciones de hash (Argon2) y creación de tokens (JWT).
+- [x] Crear el endpoint `POST /auth/register` con validación de email único.
+- [x] Crear el endpoint `POST /auth/login` que valide y emita la cookie `access_token`.
+- [x] Implementar la dependencia `get_current_user` para proteger rutas.
+- [x] Crear una migración de Alembic para la tabla de usuarios: `uv run alembic revision --autogenerate -m "create_user_table"`.
 
 ---
 
