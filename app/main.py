@@ -2,10 +2,12 @@ from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from app.auth.routes import router as auth_router
+from app.auth.instagram import router as instagram_router
 
 app = FastAPI(title="Mi App Instagram", version="0.1.0")
 
 app.include_router(auth_router)
+app.include_router(instagram_router)
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 templates = Jinja2Templates(directory="app/templates")
 
