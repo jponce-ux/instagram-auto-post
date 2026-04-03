@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+
+{% block title %}Hola Mundo{% endblock %}
+
+{% block content %}
+<h1>¡Bienvenido a FastAPI + HTMX!</h1>
+<button hx-get="/api/v1/ping" hx-target="#result">
+    Probar Conexión
+</button>
+<div id="result"></div>
+{% endblock %}

@@ -11,20 +11,20 @@ Unir el backend y el frontend por primera vez para validar que las rutas y el mo
 
 ## 📝 Criterios de Aceptación
 
-- [ ] El usuario debe poder entrar a `localhost:8000` y ver una página HTML procesada por Jinja2.
-- [ ] Debe existir un botón que use HTMX para consultar un endpoint de FastAPI y actualizar una parte de la pantalla sin recargar la página.
+- [x] El usuario debe poder entrar a `localhost:8000` y ver una página HTML procesada por Jinja2.
+- [x] Debe existir un botón que use HTMX para consultar un endpoint de FastAPI y actualizar una parte de la pantalla sin recargar la página.
 
 ---
 
 ## 🛠️ Lista de Tareas (Tasks)
 
-- [ ] Crear la rama `feat/004-hello-world-htmx` desde la rama principal.
-- [ ] En `app/main.py`, inicializar la app de FastAPI y montar la carpeta de archivos estáticos (`app/static`).
-- [ ] Descargar el archivo `htmx.min.js` y colocarlo en `app/static/js/`.
-- [ ] Crear la plantilla base `app/templates/base.html` incluyendo la estructura HTML5 y la etiqueta `<script>` apuntando a HTMX.
-- [ ] Crear `app/templates/index.html` que herede de la base, mostrando un título y un botón interactivo de HTMX.
-- [ ] Crear un endpoint `/` en FastAPI que devuelva el template renderizado.
-- [ ] Crear un endpoint `/api/v1/ping` que devuelva un fragmento de HTML (ej. `<p class="text-green-500">¡Conexión exitosa!</p>`) para ser consumido por el botón de HTMX.
+- [x] Crear la rama `feat/004-hello-world-htmx` desde la rama principal.
+- [x] En `app/main.py`, inicializar la app de FastAPI y montar la carpeta de archivos estáticos (`app/static`).
+- [x] Descargar el archivo `htmx.min.js` y colocarlo en `app/static/js/`.
+- [x] Crear la plantilla base `app/templates/base.html` incluyendo la estructura HTML5 y la etiqueta `<script>` apuntando a HTMX.
+- [x] Crear `app/templates/index.html` que herede de la base, mostrando un título y un botón interactivo de HTMX.
+- [x] Crear un endpoint `/` en FastAPI que devuelva el template renderizado.
+- [x] Crear un endpoint `/api/v1/ping` que devuelva un fragmento de HTML (ej. `<p class="text-green-500">¡Conexión exitosa!</p>`) para ser consumido por el botón de HTMX.
 
 ---
 
