@@ -23,19 +23,19 @@ git checkout -b feat/005-db-async-setup
 
 ## 📝 Criterios de Aceptación
 
-- [ ] Uso de SQLAlchemy 2.0 con asyncio.
-- [ ] Alembic configurado para detectar cambios en `app/models/`.
+- [x] Uso de SQLAlchemy 2.0 con asyncio.
+- [x] Alembic configurado para detectar cambios en `app/models/`.
 
 ---
 
 ## 🛠️ Lista de Tareas (Tasks)
 
-- [ ] Crear la rama `feat/005-db-async-setup` desde la rama principal.
-- [ ] Crear `app/core/database.py` con el `AsyncSessionLocal` y el motor `create_async_engine`.
-- [ ] Configurar el modelo base en `app/models/base.py` usando `DeclarativeBase`.
-- [ ] Inicializar Alembic: `uv run alembic init -t async migrations`.
-- [ ] Configurar `migrations/env.py` para que `target_metadata` apunte a tu `Base` de modelos.
-- [ ] Crear la revisión inicial: `uv run alembic revision --message="init_db"`.
+- [x] Crear la rama `feat/005-db-async-setup` desde la rama principal.
+- [x] Crear `app/core/database.py` con el `AsyncSessionLocal` y el motor `create_async_engine`.
+- [x] Configurar el modelo base en `app/models/base.py` usando `DeclarativeBase`.
+- [x] Inicializar Alembic: `uv run alembic init -t async migrations`.
+- [x] Configurar `migrations/env.py` para que `target_metadata` apunte a tu `Base` de modelos.
+- [x] Crear la revisión inicial: `uv run alembic revision --message="init_db"`.
 
 ---
 
