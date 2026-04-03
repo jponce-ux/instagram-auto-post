@@ -23,19 +23,19 @@ git checkout -b feat/007-meta-oauth-flow
 
 ## 📝 Criterios de Aceptación
 
-- [ ] Flujo completo: Code -> Short Token -> Long-Lived Token (60 días).
-- [ ] Persistencia del token de 60 días cifrado en la DB.
+- [x] Flujo completo: Code -> Short Token -> Long-Lived Token (60 días).
+- [x] Persistencia del token de 60 días cifrado en la DB.
 
 ---
 
 ## 🛠️ Lista de Tareas (Tasks)
 
-- [ ] Crear la rama `feat/007-meta-oauth-flow` desde la rama principal.
-- [ ] Crear el modelo `InstagramAccount` en `app/models/instagram.py`.
-- [ ] Desarrollar `app/services/instagram.py` usando HTTPX asíncrono para llamadas a Meta.
-- [ ] Implementar endpoint `/auth/instagram/login` (Redirección a Facebook).
-- [ ] Implementar endpoint `/auth/instagram/callback` (Intercambio de tokens y guardado en DB).
-- [ ] Generar migración de Alembic para la nueva tabla: `uv run alembic revision --autogenerate -m "add_instagram_account"`.
+- [x] Crear la rama `feat/007-meta-oauth-flow` desde la rama principal.
+- [x] Crear el modelo `InstagramAccount` en `app/models/instagram.py`.
+- [x] Desarrollar `app/services/instagram.py` usando HTTPX asíncrono para llamadas a Meta.
+- [x] Implementar endpoint `/auth/instagram/login` (Redirección a Facebook).
+- [x] Implementar endpoint `/auth/instagram/callback` (Intercambio de tokens y guardado en DB).
+- [x] Generar migración de Alembic para la nueva tabla: `uv run alembic revision --autogenerate -m "add_instagram_account"`.
 
 ---
 
