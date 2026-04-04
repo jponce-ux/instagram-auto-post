@@ -27,13 +27,21 @@
     ports:
       - "9000:9000"
       - "9001:9001"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
-      interval: 30s
-      timeout: 20s
-      retries: 3
+healthcheck:
+test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+interval: 30s
+timeout: 20s
+retries: 3
 
-  web:
+redis:
+image: redis:7-alpine
+healthcheck:
+test: ["CMD", "redis-cli", "ping"]
+interval: 5s
+timeout: 5s
+retries: 5
+
+web:
     build: .
     environment:
       DATABASE_URL: ${DATABASE_URL}

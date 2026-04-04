@@ -13,7 +13,10 @@ class Settings(BaseSettings):
     MINIO_ENDPOINT: str = "http://minio:9000"
     MINIO_ROOT_USER: str = "minioadmin"
     MINIO_ROOT_PASSWORD: str = "minioadmin123"
-    MINIO_BUCKET_NAME: str = "instagram-uploads"
+MINIO_BUCKET_NAME: str = "instagram-uploads"
+
+    # Celery Configuration
+    CELERY_BROKER_URL: str = "redis://redis:6379/0"
 
     class Config:
         env_file = ".env"
