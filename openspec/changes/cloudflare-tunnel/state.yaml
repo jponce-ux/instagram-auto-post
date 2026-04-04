@@ -1,0 +1,20 @@
+# SDD Change State
+name: cloudflare-tunnel
+status: pending
+created_at: 2026-04-04
+completed_at: null
+
+phases:
+  proposal: pending
+  spec: completed
+  design: pending
+  tasks: pending
+  apply: pending
+  verify: pending
+  archive: pending
+
+dependencies:
+  - storage-minio (SPEC-008) - MinIO must be implemented first
+
+branch: null
+merged_to: null
