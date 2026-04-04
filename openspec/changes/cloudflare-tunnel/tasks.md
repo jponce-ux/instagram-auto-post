@@ -2,6 +2,12 @@
 
 > **BLOCKER**: SPEC-008 (storage-minio) must be implemented first. MinIO service required.
 
+## Phase 0: Git Branch
+
+- [ ] 0.1 `git checkout main`
+- [ ] 0.2 `git pull origin main`
+- [ ] 0.3 `git checkout -b feat/009-cloudflare-tunnel`
+
 ## Phase 1: Foundation - Docker Network & Environment
 
 - [ ] 1.1 Add `app-network` bridge network to `docker-compose.yml` for inter-service DNS resolution
@@ -29,3 +35,10 @@
 ## Phase 4: Documentation
 
 - [ ] 4.1 Add tunnel setup instructions to README.md (environment variables, Cloudflare dashboard steps)
+
+## Phase 5: Git Commit
+
+- [ ] 5.1 `git add .`
+- [ ] 5.2 `git commit -m "feat(009): add Cloudflare Tunnel for public access to API and MinIO"`
+- [ ] 5.3 `git push origin feat/009-cloudflare-tunnel` (optional)
+- [ ] 5.4 Return to main: `git checkout main` (wait for PR review before merge)

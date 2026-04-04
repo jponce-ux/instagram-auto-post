@@ -1,4 +1,4 @@
-from pydantic_settings import BaseSettings
+﻿from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
@@ -8,6 +8,12 @@ class Settings(BaseSettings):
     META_APP_ID: str = ""
     META_APP_SECRET: str = ""
     BASE_URL: str = "http://localhost:8000"
+
+    # MinIO Configuration
+    MINIO_ENDPOINT: str = "http://minio:9000"
+    MINIO_ROOT_USER: str = "minioadmin"
+    MINIO_ROOT_PASSWORD: str = "minioadmin123"
+    MINIO_BUCKET_NAME: str = "instagram-uploads"
 
     class Config:
         env_file = ".env"
