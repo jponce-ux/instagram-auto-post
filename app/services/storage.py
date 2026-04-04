@@ -95,9 +95,10 @@ class StorageService:
             )
 
         # Replace internal host with tunnel host if configured
+        # Also force https scheme for public URLs (Cloudflare tunnel)
         if self.tunnel_host:
             parsed = urlparse(url)
-            url = urlunparse(parsed._replace(netloc=self.tunnel_host))
+            url = urlunparse(parsed._replace(scheme="https", netloc=self.tunnel_host))
 
         return url
 
