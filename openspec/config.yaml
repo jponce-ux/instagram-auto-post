@@ -1,0 +1,19 @@
+# SDD Artifact Store Configuration
+# Mode: hybrid - saves to both Engram and files
+
+artifact_store:
+  mode: hybrid
+  
+  # File-based storage (for git commits)
+  openspec:
+    enabled: true
+    base_path: openspec/changes/
+    
+  # Memory-based storage (for cross-session recovery)  
+  engram:
+    enabled: true
+    
+# Created: 2026-04-04
+# Mode 'hybrid' ensures:
+# - Every artifact is saved to Engram (fast, cross-session)
+# - Every artifact is saved as file (git-friendly, team-shareable)

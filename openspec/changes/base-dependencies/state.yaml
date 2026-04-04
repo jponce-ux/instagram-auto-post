@@ -1,0 +1,17 @@
+# SDD Change State
+name: base-dependencies
+status: completed
+created_at: 2026-04-03
+completed_at: 2026-04-03
+
+phases:
+  proposal: completed
+  spec: completed
+  design: skipped  # dependency installation, no design needed
+  tasks: completed
+  apply: completed
+  verify: completed
+  archive: pending
+
+branch: feat/002-base-dependencies
+merged_to: master

@@ -1,0 +1,17 @@
+# SDD Change State
+name: auth-argon2-jwt
+status: completed
+created_at: 2026-04-03
+completed_at: 2026-04-03
+
+phases:
+  proposal: completed
+  spec: completed
+  design: completed
+  tasks: completed
+  apply: completed
+  verify: completed
+  archive: pending
+
+branch: feat/006-auth-argon2-jwt
+merged_to: master
