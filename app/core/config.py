@@ -1,4 +1,4 @@
-﻿from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
@@ -14,6 +14,10 @@ class Settings(BaseSettings):
     MINIO_ROOT_USER: str = "minioadmin"
     MINIO_ROOT_PASSWORD: str = "minioadmin123"
     MINIO_BUCKET_NAME: str = "instagram-uploads"
+    MINIO_TUNNEL_HOST: str = (
+        ""  # Tunnel host for presigned URLs (e.g., instagramjp.domain.com)
+    )
+    MINIO_SSE_ENABLED: bool = False  # Server-side encryption (SSE-S3)
 
     class Config:
         env_file = ".env"
