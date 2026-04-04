@@ -73,7 +73,7 @@ Pre-digested rules per skill. Delegators copy matching blocks into sub-agent pro
 |------|------|-------|
 | AGENTS.md | C:\Users\JuanPa\.config\opencode\AGENTS.md | OpenCode user-level rules |
 | openspec/config.yaml | openspec/config.yaml | SDD artifact store mode: hybrid |
-| .specify/specs/ | .specify/specs/SPEC-*.md | Manual specs (pre-SDD workflow) |
+| openspec/changes/ | openspec/changes/{change-name}/ | SDD specs (hybrid: files + engram) |
 
 ### AGENTS.md Summary
 - Never add "Co-Authored-By" or AI attribution to commits
