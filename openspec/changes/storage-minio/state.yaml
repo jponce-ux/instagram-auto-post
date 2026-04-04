@@ -1,0 +1,17 @@
+# SDD Change State
+name: storage-minio
+status: pending
+created_at: 2026-04-04
+completed_at: null
+
+phases:
+  proposal: pending
+  spec: completed
+  design: pending
+  tasks: pending
+  apply: pending
+  verify: pending
+  archive: pending
+
+branch: null
+merged_to: null
