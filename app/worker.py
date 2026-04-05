@@ -2,6 +2,7 @@ import asyncio
 import logging
 import time
 from celery import Celery
+from celery.schedules import interval
 
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal, SyncSessionLocal
@@ -34,7 +35,7 @@ celery_app.conf.update(
 celery_app.conf.beat_schedule = {
     "check-scheduled-posts": {
         "task": "app.worker.check_scheduled_posts",
-        "schedule": 60.0,  # seconds
+        "schedule": interval(seconds=60),
     },
 }
 
@@ -88,7 +89,8 @@ def check_scheduled_posts(self) -> dict:
             return total_found
 
     try:
-        _query_and_dispatch()
+        # Run sync query in thread pool to avoid blocking
+        asyncio.run(asyncio.to_thread(_query_and_dispatch))
         logger.info(
             f"Beat cycle complete: {dispatched_count}/{total_found} posts dispatched"
         )
