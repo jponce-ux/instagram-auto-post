@@ -14,9 +14,9 @@ FastAPI bloquea el hilo principal durante operaciones pesadas como publicación 
 - Dependencias: `celery` y `redis` vía UV
 
 ### Out of Scope
-- Monitoreo de tareas (Celery Beat, Flower) —future work
-- Rate limiting de tareas —future work
-- Retry policies avanzadas —future work
+- Monitoreo de tareas (Celery Beat, Flower) — future work
+- Rate limiting de tareas — future work
+- Retry policies avanzadas — future work
 
 ## Capabilities
 
@@ -47,7 +47,7 @@ FastAPI bloquea el hilo principal durante operaciones pesadas como publicación 
 
 | Risk | Likelihood | Mitigation |
 |------|------------|------------|
-| CeleryWorker no puede usar async SQLAlchemy | Medium | Usar `asgiref` o sync session factory |
+| Celery Worker no puede usar async SQLAlchemy | Medium | Usar `asgiref` o sync session factory |
 | Redis connection refused | Low | Healthcheck y depends_on en docker-compose |
 | Memory leak en worker | Low | Configurar CELERY_WORKER_MAX_TASKS_PER_CHILD |
 
@@ -60,12 +60,12 @@ FastAPI bloquea el hilo principal durante operaciones pesadas como publicación 
 
 ## Dependencies
 
-- SPEC-003 (Docker Setup) —✅ Completado
+- SPEC-003 (Docker Setup) — ✅ Completado
 - SPEC-008 (Storage MinIO) — ✅ Completado (worker necesita acceso a MinIO)
 
 ## Success Criteria
 
-- [ ] `docker compose up` levanta redis y worker sin errores
-- [ ] `debug_task("test")` ejecuta y registra en logs del worker
-- [ ] Worker puede acceder a PostgreSQL y MinIO (conexiones funcionan)
-- [ ] FastAPI puede enviar tareas a la cola via `debug_task.delay()`
+- [x] `docker compose up` levanta redis y worker sin errores
+- [x] `debug_task("test")` ejecuta y registra en logs del worker
+- [x] Worker puede acceder a PostgreSQL y MinIO (conexiones funcionan)
+- [x] FastAPI puede enviar tareas a la cola via `debug_task.delay()`

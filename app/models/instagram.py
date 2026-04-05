@@ -15,3 +15,4 @@ class InstagramAccount(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     user = relationship("User", back_populates="instagram_accounts")
+    posts = relationship("Post", back_populates="instagram_account")

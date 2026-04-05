@@ -15,3 +15,5 @@ class User(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     instagram_accounts = relationship("InstagramAccount", back_populates="user")
+    media_files = relationship("MediaFile", back_populates="user")
+    posts = relationship("Post", back_populates="user")

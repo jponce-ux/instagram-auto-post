@@ -36,6 +36,19 @@ services:
       retries: 3
     networks:
       - app-network
+<<<<<<< HEAD
+=======
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app-network
+>>>>>>> feat/011-celery-redis
 
 redis:
 image: redis:7-alpine
@@ -57,6 +70,7 @@ web:
       MINIO_BUCKET_NAME: ${MINIO_BUCKET_NAME}
       MINIO_TUNNEL_HOST: ${MINIO_TUNNEL_HOST:-}
       MINIO_SSE_ENABLED: ${MINIO_SSE_ENABLED:-false}
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/0}
     ports:
       - "8000:8000"
     healthcheck:
@@ -67,6 +81,28 @@ web:
       start_period: 10s
     depends_on:
       db:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    networks:
+      - app-network
+
+  worker:
+    build: .
+    command: uv run celery -A app.worker.celery_app worker --loglevel=info
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      SECRET_KEY: ${SECRET_KEY}
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT}
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      MINIO_BUCKET_NAME: ${MINIO_BUCKET_NAME}
+      MINIO_TUNNEL_HOST: ${MINIO_TUNNEL_HOST:-}
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/0}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
         condition: service_healthy
       minio:
         condition: service_healthy

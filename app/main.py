@@ -104,3 +104,13 @@ async def get_media_url(
     url = await storage_service.get_presigned_url(media_file.key)
 
     return {"url": url, "expires_in": 600}
+
+@app.post("/api/v1/debug/task")
+async def trigger_debug_task():
+    """
+    Debug endpoint to dispatch Celery task.
+
+    Queues a debug_task and returns immediately with task ID.
+    """
+    task = debug_task.delay(name="test")
+    return {"task_id": task.id, "status": "queued"}    

@@ -13,6 +13,7 @@ See `_shared/skill-resolver.md` for the full resolution protocol.
 | Creating a GitHub issue, reporting a bug, requesting a feature | issue-creation | ~/.config/opencode/skills/issue-creation/SKILL.md |
 | judgment day, review adversarial, dual review, doble review, juzgar, que lo juzguen | judgment-day | ~/.config/opencode/skills/judgment-day/SKILL.md |
 | Creating a new skill, add agent instructions, document patterns for AI | skill-creator | ~/.config/opencode/skills/skill-creator/SKILL.md |
+| When user invokes `/sdd-apply-all-pending` or wants to batch-apply multiple specs | sdd-apply-all-pending | ~/.config/opencode/skills/sdd-apply-all-pending/SKILL.md |
 
 ## Compact Rules
 
@@ -60,6 +61,16 @@ Pre-digested rules per skill. Delegators copy matching blocks into sub-agent pro
 - references/ points to LOCAL files, not web URLs
 - Frontmatter required: name, description (with trigger), license Apache-2.0, author, version
 - Start with critical patterns, use tables for decision trees, keep code minimal
+
+### sdd-apply-all-pending
+- Discover specs from engram (`sdd/*/tasks`) and/or openspec (`openspec/changes/*/tasks.md`)
+- Determine execution order: explicit dependencies → numeric prefix (spec-011 < spec-012) → alphabetical
+- A spec is "pending" if: has proposal+spec+design+tasks, apply-progress incomplete, not archived
+- Execute sequentially: sdd-apply → sdd-verify → (optional) sdd-archive
+- On apply failure: STOP batch, report which spec failed
+- On verification failure: ask user to continue or stop
+- Show progress: `[2/5] Applying spec-xyz...`
+- Persist batch state so interruption can resume
 
 ## Project Conventions
 

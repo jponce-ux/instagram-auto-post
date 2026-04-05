@@ -233,4 +233,8 @@ async def _process_post_async(post_id: int):
 
 - [ ] ¿Retry policy para rate limits? → Sugerido: exponential backoff, max 3 retries
 - [ ] ¿Timeout para container status polling? → Propuesto: 30 segundos
+<<<<<<< HEAD
 - [ ] ¿Notificar usuario cuando post falla? → Deferred (WebSocket/email)
+=======
+- [ ] ¿Notificar usuario cuando post falla? → Deferred (WebSocket/email)
+>>>>>>> feat/011-celery-redis
