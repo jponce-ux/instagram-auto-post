@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Mi App{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="mb-8">
+        <h1 class="text-2xl sm:text-3xl font-bold text-gray-900">Dashboard</h1>
+        <p class="mt-1 text-sm text-gray-500">Bienvenido, {{ user.email }}</p>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- Accounts Section -->
+        <div class="bg-white rounded-lg shadow p-6">
+            <h2 class="text-lg font-semibold text-gray-900 mb-4">Cuentas Conectadas</h2>
+            <div id="accounts-section">
+                {% include "dashboard/accounts_partial.html" %}
+            </div>
+        </div>
+
+        <!-- Post Form Section -->
+        <div class="bg-white rounded-lg shadow p-6">
+            <h2 class="text-lg font-semibold text-gray-900 mb-4">Crear Publicación</h2>
+            <div id="post-form-section">
+                {% include "dashboard/post_form.html" %}
+            </div>
+        </div>
+    </div>
+
+    <!-- History Section -->
+    <div class="mt-6 bg-white rounded-lg shadow p-6">
+        <h2 class="text-lg font-semibold text-gray-900 mb-4">Historial de Publicaciones</h2>
+        <div id="history-section"
+             hx-get="/dashboard/posts/feed"
+             hx-trigger="every 10s"
+             hx-swap="innerHTML">
+            {% include "dashboard/posts_feed.html" %}
+        </div>
+    </div>
+</div>
+{% endblock %}

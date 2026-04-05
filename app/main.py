@@ -4,6 +4,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from app.auth.routes import router as auth_router
 from app.auth.instagram import router as instagram_router
+from app.dashboard.routes import router as dashboard_router
 from app.services.storage import storage_service
 from app.worker import debug_task
 import uuid
@@ -22,6 +23,7 @@ app = FastAPI(title="Mi App Instagram", version="0.1.0", lifespan=lifespan)
 
 app.include_router(auth_router)
 app.include_router(instagram_router)
+app.include_router(dashboard_router)
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 templates = Jinja2Templates(directory="app/templates")
 

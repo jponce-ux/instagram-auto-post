@@ -1,0 +1,79 @@
+{% if success %}
+<div class="rounded-md bg-green-50 p-4 mb-4">
+    <div class="flex">
+        <div class="flex-shrink-0">
+            <svg class="h-5 w-5 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+            </svg>
+        </div>
+        <div class="ml-3">
+            <p class="text-sm font-medium text-green-800">
+                Publicación creada exitosamente. Estado: {{ post.status.value | upper }}
+            </p>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% if error %}
+<div class="rounded-md bg-red-50 p-4 mb-4">
+    <div class="flex">
+        <div class="flex-shrink-0">
+            <svg class="h-5 w-5 text-red-400" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/>
+            </svg>
+        </div>
+        <div class="ml-3">
+            <p class="text-sm font-medium text-red-800">{{ error }}</p>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<form hx-post="/dashboard/post"
+      hx-encoding="multipart/form-data"
+      hx-target="#post-form-section"
+      hx-swap="innerHTML"
+      class="space-y-4">
+    
+    <!-- Image Upload -->
+    <div>
+        <label for="file" class="block text-sm font-medium text-gray-700 mb-1">
+            Imagen <span class="text-red-500">*</span>
+        </label>
+        <div class="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-lg hover:border-purple-400 transition-colors">
+            <div class="space-y-1 text-center">
+                <svg class="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48">
+                    <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <div class="flex text-sm text-gray-600">
+                    <label for="file" class="relative cursor-pointer bg-white rounded-md font-medium text-purple-600 hover:text-purple-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-purple-500">
+                        <span>Subir archivo</span>
+                        <input id="file" name="file" type="file" accept="image/*" class="sr-only" required>
+                    </label>
+                    <p class="pl-1">o arrastrar aquí</p>
+                </div>
+                <p class="text-xs text-gray-500">PNG, JPG, GIF hasta 10MB</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Caption -->
+    <div>
+        <label for="caption" class="block text-sm font-medium text-gray-700 mb-1">
+            Descripción
+        </label>
+        <textarea id="caption" name="caption" rows="3"
+                  class="shadow-sm focus:ring-purple-500 focus:border-purple-500 block w-full sm:text-sm border-gray-300 rounded-md"
+                  placeholder="Escribe una descripción para tu publicación..."></textarea>
+        <p class="mt-1 text-xs text-gray-500">Opcional. La descripción puede estar vacía.</p>
+    </div>
+
+    <!-- Submit Button -->
+    <div>
+        <button type="submit"
+                class="w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 min-h-[44px]">
+            Publicar
+        </button>
+    </div>
+</form>

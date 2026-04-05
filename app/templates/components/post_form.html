@@ -1,0 +1,24 @@
+{# Progressive upload component for post creation #}
+{# This component handles the file upload with visual feedback #}
+
+<div class="upload-component" x-data="{ uploading: false, progress: 0 }">
+    <div class="relative">
+        <input type="file"
+               name="file"
+               accept="image/*"
+               class="block w-full text-sm text-gray-500
+                      file:mr-4 file:py-2 file:px-4
+                      file:rounded-md file:border-0
+                      file:text-sm file:font-semibold
+                      file:bg-purple-50 file:text-purple-700
+                      hover:file:bg-purple-100
+                      cursor-pointer"
+               @change="uploading = true; $el.closest('form').requestSubmit()">
+        
+        {% if uploading %}
+        <div class="absolute inset-0 bg-white bg-opacity-75 flex items-center justify-center">
+            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600"></div>
+        </div>
+        {% endif %}
+    </div>
+</div>
