@@ -1,4 +1,4 @@
-﻿from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
@@ -8,6 +8,9 @@ class Settings(BaseSettings):
     META_APP_ID: str = ""
     META_APP_SECRET: str = ""
     BASE_URL: str = "http://localhost:8000"
+
+    # Celery Configuration
+    CELERY_BROKER_URL: str = "redis://redis:6379/0"
 
     # MinIO Configuration
     MINIO_ENDPOINT: str = "http://minio:9000"

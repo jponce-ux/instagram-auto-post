@@ -1,10 +1,11 @@
-﻿from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, UploadFile, File
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from app.auth.routes import router as auth_router
 from app.auth.instagram import router as instagram_router
 from app.services.storage import storage_service
+from app.worker import debug_task
 import uuid
 
 
@@ -39,15 +40,26 @@ async def ping():
 async def debug_upload(file: UploadFile = File(...)):
     """
     Debug endpoint to test file upload to MinIO.
-    
+
     Uploads a file and returns a presigned URL.
     """
     # Generate unique key with original extension
     file_ext = file.filename.split(".")[-1] if "." in file.filename else "bin"
     key = f"uploads/{uuid.uuid4()}.{file_ext}"
-    
+
     # Upload and get presigned URL
     await storage_service.upload_file(file, key)
     url = await storage_service.get_presigned_url(key)
-    
+
     return {"url": url, "key": key, "filename": file.filename}
+
+
+@app.post("/api/v1/debug/task")
+async def trigger_debug_task():
+    """
+    Debug endpoint to dispatch Celery task.
+
+    Queues a debug_task and returns immediately with task ID.
+    """
+    task = debug_task.delay(name="test")
+    return {"task_id": task.id, "status": "queued"}
