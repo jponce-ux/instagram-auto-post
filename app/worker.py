@@ -1,9 +1,11 @@
 import asyncio
+import logging
 import time
 from celery import Celery
+from celery.schedules import interval
 
 from app.core.config import settings
-from app.core.database import AsyncSessionLocal
+from app.core.database import AsyncSessionLocal, SyncSessionLocal
 from app.models.post import Post, PostStatus
 from app.models.instagram import InstagramAccount
 from app.models.media_file import MediaFile
@@ -13,6 +15,8 @@ from app.services.instagram import (
     get_container_status,
     publish_media_container,
 )
+
+logger = logging.getLogger(__name__)
 
 celery_app = Celery(
     "worker",
@@ -27,11 +31,71 @@ celery_app.conf.update(
     enable_utc=True,
 )
 
+celery_app.conf.beat_schedule = {
+    "check-scheduled-posts": {
+        "task": "app.worker.check_scheduled_posts",
+        "schedule": interval(seconds=60),
+    },
+}
+
 
 @celery_app.task
 def debug_task(name: str) -> str:
     """Validates Celery integration."""
     return f"Hello, {name}!"
+
+
+@celery_app.task(bind=True, max_retries=0)
+def check_scheduled_posts(self) -> dict:
+    """
+    Beat task: query for scheduled posts and dispatch processing tasks.
+
+    Runs every 60 seconds via Celery Beat. Finds posts with status=PENDING
+    and scheduled_at <= now(), transitions them to PROCESSING, and dispatches
+    process_instagram_post for each.
+    """
+    from datetime import datetime, timezone
+    from sqlalchemy import select
+
+    dispatched_count = 0
+    total_found = 0
+
+    def _query_and_dispatch():
+        nonlocal dispatched_count, total_found
+        with SyncSessionLocal() as session:
+            stmt = (
+                select(Post)
+                .where(
+                    Post.status == PostStatus.PENDING,
+                    Post.scheduled_at <= datetime.now(timezone.utc),
+                )
+                .order_by(Post.scheduled_at.asc())
+            )
+            posts = session.execute(stmt).scalars().all()
+            total_found = len(posts)
+
+            for post in posts:
+                try:
+                    post.status = PostStatus.PROCESSING
+                    session.commit()
+                    process_instagram_post.delay(post.id)
+                    dispatched_count += 1
+                    logger.info(f"Dispatched post {post.id} for processing")
+                except Exception as e:
+                    session.rollback()
+                    logger.error(f"Failed to dispatch post {post.id}: {e}")
+
+            return total_found
+
+    try:
+        _query_and_dispatch()
+        logger.info(
+            f"Beat cycle complete: {dispatched_count}/{total_found} posts dispatched"
+        )
+        return {"found": total_found, "dispatched": dispatched_count, "error": None}
+    except Exception as e:
+        logger.error(f"Beat task failed: {e}")
+        return {"error": str(e), "found": 0, "dispatched": 0}
 
 
 async def _process_post_async(post_id: int) -> None:

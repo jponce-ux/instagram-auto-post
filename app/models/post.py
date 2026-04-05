@@ -24,6 +24,7 @@ class Post(Base):
     ig_container_id = Column(String, nullable=True)
     ig_media_id = Column(String, nullable=True)
     error_message = Column(Text, nullable=True)
+    scheduled_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     published_at = Column(DateTime(timezone=True), nullable=True)
