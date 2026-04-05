@@ -12,6 +12,7 @@ from app.models.user import User
 from app.models.media_file import MediaFile
 from app.services.storage import storage_service
 from app.dashboard.routes import router as dashboard_router
+from app.webhooks.meta import router as webhook_router
 from app.worker import debug_task  # Celery debug task
 
 
@@ -29,6 +30,7 @@ app = FastAPI(title="Mi App Instagram", version="0.1.0", lifespan=lifespan)
 app.include_router(auth_router)
 app.include_router(instagram_router)
 app.include_router(dashboard_router)
+app.include_router(webhook_router, tags=["webhooks"])
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 templates = Jinja2Templates(directory="app/templates")
 

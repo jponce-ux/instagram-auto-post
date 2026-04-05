@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     # Celery Configuration
     CELERY_BROKER_URL: str = "redis://redis:6379/0"
 
+    # Meta Webhook Configuration
+    META_WEBHOOK_VERIFY_TOKEN: str = ""
+
     class Config:
         env_file = ".env"
         extra = "ignore"

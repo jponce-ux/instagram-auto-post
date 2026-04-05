@@ -2,7 +2,7 @@ import asyncio
 import logging
 import time
 from celery import Celery
-from celery.schedules import interval
+from datetime import timedelta
 
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal, SyncSessionLocal
@@ -35,7 +35,7 @@ celery_app.conf.update(
 celery_app.conf.beat_schedule = {
     "check-scheduled-posts": {
         "task": "app.worker.check_scheduled_posts",
-        "schedule": interval(seconds=60),
+        "schedule": timedelta(seconds=60),
     },
 }
 
