@@ -11,6 +11,8 @@ from app.core.database import get_db
 from app.models.user import User
 from app.models.media_file import MediaFile
 from app.services.storage import storage_service
+from app.dashboard.routes import router as dashboard_router
+from app.worker import debug_task  # Celery debug task
 
 
 @asynccontextmanager
@@ -26,6 +28,7 @@ app = FastAPI(title="Mi App Instagram", version="0.1.0", lifespan=lifespan)
 
 app.include_router(auth_router)
 app.include_router(instagram_router)
+app.include_router(dashboard_router)
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 templates = Jinja2Templates(directory="app/templates")
 
@@ -105,6 +108,7 @@ async def get_media_url(
 
     return {"url": url, "expires_in": 600}
 
+
 @app.post("/api/v1/debug/task")
 async def trigger_debug_task():
     """
@@ -113,4 +117,4 @@ async def trigger_debug_task():
     Queues a debug_task and returns immediately with task ID.
     """
     task = debug_task.delay(name="test")
-    return {"task_id": task.id, "status": "queued"}    
+    return {"task_id": task.id, "status": "queued"}

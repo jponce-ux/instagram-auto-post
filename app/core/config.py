@@ -9,9 +9,6 @@ class Settings(BaseSettings):
     META_APP_SECRET: str = ""
     BASE_URL: str = "http://localhost:8000"
 
-    # Celery Configuration
-    CELERY_BROKER_URL: str = "redis://redis:6379/0"
-
     # MinIO Configuration
     MINIO_ENDPOINT: str = "http://minio:9000"
     MINIO_ROOT_USER: str = "minioadmin"
@@ -24,6 +21,7 @@ class Settings(BaseSettings):
 
     # Celery Configuration
     CELERY_BROKER_URL: str = "redis://redis:6379/0"
+
     class Config:
         env_file = ".env"
         extra = "ignore"
