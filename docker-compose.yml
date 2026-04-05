@@ -109,6 +109,22 @@ web:
     networks:
       - app-network
 
+  beat:
+    build: .
+    command: uv run celery -A app.worker.celery_app beat --loglevel=info
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      DEBUG: ${DEBUG}
+      SECRET_KEY: ${SECRET_KEY}
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/0}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - app-network
+
   tunnel:
     image: cloudflare/cloudflared:latest
     container_name: mi-app-instagram-tunnel
