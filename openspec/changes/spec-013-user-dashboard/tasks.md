@@ -45,3 +45,17 @@
 
 - [x] 6.1 Stage all changes and commit with conventional message: `feat(dashboard): add user dashboard with HTMX and Tailwind`
 - [x] 6.2 Push branch to remote
+
+## Phase 7: Tests
+
+- [x] 7.1 Create `tests/test_dashboard.py` with test suite for dashboard routes
+- [x] 7.2 Test: Dashboard authentication guard (401 without JWT, 200 with JWT)
+- [x] 7.3 Test: Linked accounts display (with accounts and empty state)
+- [x] 7.4 Test: OAuth connection flow redirect
+- [x] 7.5 Test: Post creation form (with image/caption, without image validation, without caption)
+- [x] 7.6 Test: Post history display (with posts and empty state)
+- [x] 7.7 Test: HTMX polling for history updates
+- [x] 7.8 Test: Mobile responsive design (Tailwind classes)
+- [x] 7.9 Test: HTMX partial content responses
+- [x] 7.10 Test: Dashboard service functions
+- [x] 7.11 Commit tests with message: `test(spec-013): add comprehensive dashboard tests`
