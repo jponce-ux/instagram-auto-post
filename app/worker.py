@@ -2,7 +2,6 @@ import asyncio
 import logging
 import time
 from celery import Celery
-from celery.schedules import interval
 
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal, SyncSessionLocal
@@ -31,10 +30,11 @@ celery_app.conf.update(
     enable_utc=True,
 )
 
+# Celery Beat schedule: run check_scheduled_posts every 60 seconds
 celery_app.conf.beat_schedule = {
     "check-scheduled-posts": {
         "task": "app.worker.check_scheduled_posts",
-        "schedule": interval(seconds=60),
+        "schedule": 60.0,  # seconds
     },
 }
 

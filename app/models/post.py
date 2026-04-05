@@ -20,7 +20,11 @@ class Post(Base):
     ig_account_id = Column(Integer, ForeignKey("instagram_accounts.id"), nullable=False)
     media_file_id = Column(Integer, ForeignKey("media_files.id"), nullable=False)
     caption = Column(Text, nullable=True)
-    status = Column(Enum(PostStatus), default=PostStatus.PENDING, nullable=False)
+    status = Column(
+        Enum(PostStatus, values_callable=lambda obj: [e.value for e in obj]),
+        default=PostStatus.PENDING,
+        nullable=False,
+    )
     ig_container_id = Column(String, nullable=True)
     ig_media_id = Column(String, nullable=True)
     error_message = Column(Text, nullable=True)
