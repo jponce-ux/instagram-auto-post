@@ -1,4 +1,4 @@
-﻿services:
+services:
   db:
     image: postgres:16-alpine
     environment:
@@ -14,6 +14,8 @@
       interval: 5s
       timeout: 5s
       retries: 5
+    networks:
+      - app-network
 
   minio:
     image: minio/minio:latest
@@ -27,11 +29,13 @@
     ports:
       - "9000:9000"
       - "9001:9001"
-healthcheck:
-test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
-interval: 30s
-timeout: 20s
-retries: 3
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    networks:
+      - app-network
 
 redis:
 image: redis:7-alpine
@@ -53,11 +57,36 @@ web:
       MINIO_BUCKET_NAME: ${MINIO_BUCKET_NAME}
     ports:
       - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/ping')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
     depends_on:
       db:
         condition: service_healthy
       minio:
         condition: service_healthy
+    networks:
+      - app-network
+
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: mi-app-instagram-tunnel
+    command: tunnel --no-autoupdate run --token ${TUNNEL_TOKEN}
+    restart: unless-stopped
+    depends_on:
+      web:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
 
 volumes:
   postgres_data:
