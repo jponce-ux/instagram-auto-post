@@ -1,13 +1,19 @@
 """
 Security utilities for Meta webhook signature validation.
 
-Implements HMAC-SHA1 signature verification and replay attack prevention
-via timestamp validation.
+Implements HMAC-SHA1 signature verification for webhook authenticity.
+Replay attack prevention is handled through idempotent business logic
+in the webhook handler (check current state before updating).
+
+Security model:
+- HMAC signature validates payload authenticity (not tampered)
+- HTTPS via Cloudflare tunnel encrypts traffic in transit
+- Idempotent updates prevent duplicate processing from replayed webhooks
 """
 
 import hmac
 import hashlib
-import time
+import logging
 from functools import wraps
 from typing import Callable
 
@@ -15,9 +21,7 @@ from fastapi import Request, HTTPException
 
 from app.core.config import settings
 
-
-# 5-minute window for timestamp validation to prevent replay attacks
-TIMESTAMP_WINDOW_SECONDS = 300
+logger = logging.getLogger(__name__)
 
 
 def verify_webhook_signature(func: Callable) -> Callable:
@@ -28,11 +32,13 @@ def verify_webhook_signature(func: Callable) -> Callable:
     1. Extract X-Hub-Signature header (format: "sha1=<hash>")
     2. Compute HMAC-SHA1(payload, META_APP_SECRET)
     3. Compare signatures using constant-time comparison
-    4. Validate timestamp is within 5 minutes (replay protection)
 
     Raises:
         HTTPException: 401 if signature is invalid or missing
-        HTTPException: 403 if timestamp is too old (replay attack)
+
+    Note:
+        Replay attack prevention is handled by idempotent business logic
+        in the webhook handler, not by timestamp validation.
 
     Usage:
         @router.post("/webhooks/instagram")

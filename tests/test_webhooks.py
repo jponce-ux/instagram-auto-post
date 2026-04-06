@@ -449,6 +449,133 @@ class TestProcessWebhookChangeUnit:
         assert mock_post.error_message == "Media upload failed: invalid format"
         mock_db.commit.assert_called_once()
 
+    @pytest.mark.asyncio
+    async def test_idempotent_published_webhook_skips_update(self):
+        """Test: Post already PUBLISHED → webhook skips update (idempotent)
+
+        GIVEN a Post that is already PUBLISHED
+        WHEN webhook with status=PUBLISHED is received
+        THEN no update is made and no commit is called"""
+        from app.webhooks.meta import _process_webhook_change
+        from app.webhooks.schemas import WebhookValue
+
+        # Setup mock post - already PUBLISHED
+        mock_post = Mock(spec=Post)
+        mock_post.id = 10
+        mock_post.status = PostStatus.PUBLISHED
+
+        # Setup mock database
+        mock_db = AsyncMock(spec=AsyncSession)
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = mock_post
+        mock_db.execute.return_value = mock_result
+
+        # Create webhook value with PUBLISHED status
+        value = WebhookValue(
+            container_id="container_999",
+            status="PUBLISHED",
+            media_id="media_999",
+        )
+
+        with patch("app.webhooks.meta.logger") as mock_logger:
+            result = await _process_webhook_change(value, mock_db)
+
+        assert result == mock_post
+        assert mock_post.status == PostStatus.PUBLISHED
+        # Idempotency: commit should NOT be called since state didn't change
+        mock_db.commit.assert_not_called()
+        # Should log idempotent skip
+        mock_logger.info.assert_called()
+        assert "already PUBLISHED" in mock_logger.info.call_args[0][0]
+
+    @pytest.mark.asyncio
+    async def test_idempotent_failed_webhook_skips_update(self):
+        """Test: Post already FAILED → webhook skips update (idempotent)
+
+        GIVEN a Post that is already FAILED
+        WHEN webhook with status=ERROR is received
+        THEN no update is made and no commit is called"""
+        from app.webhooks.meta import _process_webhook_change
+        from app.webhooks.schemas import WebhookValue
+
+        # Setup mock post - already FAILED
+        mock_post = Mock(spec=Post)
+        mock_post.id = 11
+        mock_post.status = PostStatus.FAILED
+        mock_post.error_message = "Previous error"
+
+        # Setup mock database
+        mock_db = AsyncMock(spec=AsyncSession)
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = mock_post
+        mock_db.execute.return_value = mock_result
+
+        # Create webhook value with ERROR status
+        value = WebhookValue(
+            container_id="container_888",
+            status="ERROR",
+            error_message="New error message",
+        )
+
+        with patch("app.webhooks.meta.logger") as mock_logger:
+            result = await _process_webhook_change(value, mock_db)
+
+        assert result == mock_post
+        assert mock_post.status == PostStatus.FAILED
+        # Error message should NOT be updated (idempotent)
+        assert mock_post.error_message == "Previous error"
+        # Idempotency: commit should NOT be called since state didn't change
+        mock_db.commit.assert_not_called()
+        # Should log idempotent skip
+        mock_logger.info.assert_called()
+        assert "already FAILED" in mock_logger.info.call_args[0][0]
+
+    @pytest.mark.asyncio
+    async def test_duplicate_published_webhook_is_idempotent(self):
+        """Test: Duplicate PUBLISHED webhook → no duplicate commit (idempotent)
+
+        GIVEN a Post in PROCESSING state receives PUBLISHED webhook twice
+        WHEN both webhooks are processed
+        THEN first webhook updates, second skips (replay protection via idempotency)"""
+        from app.webhooks.meta import _process_webhook_change
+        from app.webhooks.schemas import WebhookValue
+
+        # First call: Post in PROCESSING → PUBLISHED
+        mock_post_first = Mock(spec=Post)
+        mock_post_first.id = 20
+        mock_post_first.status = PostStatus.PROCESSING
+
+        mock_db_first = AsyncMock(spec=AsyncSession)
+        mock_result_first = MagicMock()
+        mock_result_first.scalar_one_or_none.return_value = mock_post_first
+        mock_db_first.execute.return_value = mock_result_first
+
+        value = WebhookValue(
+            container_id="container_100", status="PUBLISHED", media_id="media_100"
+        )
+
+        result_first = await _process_webhook_change(value, mock_db_first)
+
+        assert result_first == mock_post_first
+        assert mock_post_first.status == PostStatus.PUBLISHED
+        mock_db_first.commit.assert_called_once()
+
+        # Second call: Post already PUBLISHED → skip (idempotent)
+        mock_post_second = Mock(spec=Post)
+        mock_post_second.id = 20
+        mock_post_second.status = PostStatus.PUBLISHED  # Already published
+
+        mock_db_second = AsyncMock(spec=AsyncSession)
+        mock_result_second = MagicMock()
+        mock_result_second.scalar_one_or_none.return_value = mock_post_second
+        mock_db_second.execute.return_value = mock_result_second
+
+        with patch("app.webhooks.meta.logger") as mock_logger:
+            result_second = await _process_webhook_change(value, mock_db_second)
+
+        assert result_second == mock_post_second
+        mock_db_second.commit.assert_not_called()  # No commit on duplicate
+
 
 class TestWebhookSchemas:
     """Tests for webhook Pydantic schemas"""

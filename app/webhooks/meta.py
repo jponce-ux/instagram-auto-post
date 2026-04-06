@@ -156,25 +156,38 @@ async def _process_webhook_change(
         )
         return None
 
-    # Update post status based on webhook data
+    # Update post status based on webhook data (idempotent)
     status = value.status.upper()
 
     if status == "PUBLISHED":
+        # Idempotency: check if already in target state
+        if post.status == PostStatus.PUBLISHED:
+            logger.info(
+                f"Post {post.id} already PUBLISHED, skipping update (idempotent)"
+            )
+            return post
+
         post.status = PostStatus.PUBLISHED
         if value.media_id:
             post.ig_media_id = value.media_id
         logger.info(f"Post {post.id} marked as PUBLISHED via webhook")
+        await db.commit()
 
     elif status in ("ERROR", "FAILED"):
+        # Idempotency: check if already in target state
+        if post.status == PostStatus.FAILED:
+            logger.info(f"Post {post.id} already FAILED, skipping update (idempotent)")
+            return post
+
         post.status = PostStatus.FAILED
         if value.error_message:
             post.error_message = value.error_message
         logger.warning(
             f"Post {post.id} marked as FAILED via webhook: {value.error_message}"
         )
+        await db.commit()
 
     else:
         logger.info(f"Post {post.id} received status update: {status}")
 
-    await db.commit()
     return post
