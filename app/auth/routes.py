@@ -58,13 +58,23 @@ async def register_form(request: Request):
 
 
 @router.post("/register", response_model=UserResponse)
-async def register(user_data: UserRegister, db: AsyncSession = Depends(get_db)):
+async def register(
+    request: Request, user_data: UserRegister, db: AsyncSession = Depends(get_db)
+):
+    # Generic error message - don't reveal if email exists
+    generic_error = "Error en el registro"
+
     result = await db.execute(select(User).where(User.email == user_data.email))
     existing_user = result.scalar_one_or_none()
     if existing_user:
+        if is_htmx_request(request):
+            return HTMLResponse(
+                content=f'<div id="register-error" class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-4">{generic_error}</div>',
+                status_code=200,
+            )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already registered",
+            detail=generic_error,
         )
 
     hashed_password = get_password_hash(user_data.password)
@@ -91,15 +101,15 @@ async def login(
     if not user or not verify_password(form_data.password, user.hashed_password):
         # Handle HTMX vs regular request
         if is_htmx_request(request):
-            # Return error fragment for HTMX
+            # Return generic error - don't reveal if email exists or not
             return HTMLResponse(
-                content='<div id="error-message" class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-4">Credenciales incorrectas</div>',
+                content='<div id="error-message" class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-4">Error de autenticacion</div>',
                 status_code=200,
                 headers={"HX-Reswap": "innerHTML"},
             )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
+            detail="Error de autenticacion",
         )
 
     access_token = create_access_token(data={"sub": user.email})
