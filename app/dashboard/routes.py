@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends, Request, Form, UploadFile, File, HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import get_current_user, get_current_user_optional
 from app.models.user import User
 from app.dashboard.service import get_user_accounts, get_user_posts, create_post
 
@@ -15,10 +15,13 @@ templates = Jinja2Templates(directory="app/templates")
 @router.get("/dashboard", response_class=HTMLResponse)
 async def dashboard_index(
     request: Request,
-    user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Main dashboard page with accounts, post form, and history."""
+    user = await get_current_user_optional(request)
+    if user is None:
+        return RedirectResponse(url="/", status_code=303)
+
     accounts = await get_user_accounts(db, user)
     posts = await get_user_posts(db, user)
 
@@ -36,10 +39,13 @@ async def dashboard_index(
 @router.get("/dashboard/accounts", response_class=HTMLResponse)
 async def dashboard_accounts(
     request: Request,
-    user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Linked accounts section — returns fragment for HTMX or full page."""
+    user = await get_current_user_optional(request)
+    if user is None:
+        return RedirectResponse(url="/", status_code=303)
+
     accounts = await get_user_accounts(db, user)
 
     # Check if this is an HTMX request for partial content
@@ -60,10 +66,13 @@ async def dashboard_accounts(
 @router.get("/dashboard/posts/feed", response_class=HTMLResponse)
 async def posts_feed(
     request: Request,
-    user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Post history feed — HTMX fragment with polling support."""
+    user = await get_current_user_optional(request)
+    if user is None:
+        return RedirectResponse(url="/", status_code=303)
+
     posts = await get_user_posts(db, user)
 
     return templates.TemplateResponse(
@@ -78,10 +87,12 @@ async def create_post_endpoint(
     request: Request,
     caption: str = Form(""),
     file: UploadFile = File(...),
-    user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new post with image upload via HTMX form submission."""
+    user = await get_current_user_optional(request)
+    if user is None:
+        return RedirectResponse(url="/", status_code=303)
     # Validate that a file was provided
     if not file or not file.filename:
         return templates.TemplateResponse(

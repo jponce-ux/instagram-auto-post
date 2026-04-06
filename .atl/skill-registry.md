@@ -67,13 +67,13 @@ Pre-digested rules per skill. Delegators copy matching blocks into sub-agent pro
 
 | File | Path | Notes |
 |------|------|-------|
-| AGENTS.md | Not found | — |
+| AGENTS.md | ./AGENTS.md | Stack: FastAPI, SQLAlchemy 2.0 async, PostgreSQL, Celery+Redis, MinIO. UV package manager. Key patterns: AsyncSessionLocal for FastAPI, SyncSessionLocal for Celery, JWT auth with Argon2. Webhook: HMAC-SHA1 validation. |
 | CLAUDE.md | Not found | — |
 | .cursorrules | Not found | — |
 | GEMINI.md | Not found | — |
 | copilot-instructions.md | Not found | — |
 
-No project convention files found. The project does not have custom agent instructions at the project level.
+Project convention file found: AGENTS.md defines stack conventions and key patterns.
 
 ---
 

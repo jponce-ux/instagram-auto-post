@@ -14,6 +14,58 @@ artifact_store:
     enabled: true
     
 # Created: 2026-04-04
+# Updated: 2026-04-05
 # Mode 'hybrid' ensures:
 # - Every artifact is saved to Engram (fast, cross-session)
 # - Every artifact is saved as file (git-friendly, team-shareable)
+
+schema: spec-driven
+
+context: |
+  Tech stack: Python 3.11+, FastAPI (async), SQLAlchemy 2.0 (async), PostgreSQL 16
+  Architecture: Layered (auth, core, models, services, dashboard, webhooks)
+  Testing: pytest + pytest-asyncio
+  Task Queue: Celery + Redis + Celery Beat
+  Storage: MinIO (S3-compatible)
+  Auth: JWT (python-jose), Argon2 (passlib)
+  Package Manager: UV (not pip)
+
+strict_tdd: true
+
+testing:
+  runner:
+    command: "uv run pytest tests/ -v"
+    framework: pytest
+  layers:
+    unit: true
+    integration: true
+    e2e: false
+  coverage: false
+  quality:
+    linter: false
+    type_checker: false
+    formatter: false
+
+rules:
+  proposal:
+    - Include rollback plan for risky changes
+    - Identify affected modules/packages
+  specs:
+    - Use Given/When/Then format for scenarios
+    - Use RFC 2119 keywords (MUST, SHALL, SHOULD, MAY)
+  design:
+    - Include sequence diagrams for complex flows
+    - Document architecture decisions with rationale
+  tasks:
+    - Group tasks by phase (infrastructure, implementation, testing)
+    - Use hierarchical numbering (1.1, 1.2, etc.)
+    - Keep tasks small enough to complete in one session
+  apply:
+    - Follow existing code patterns and conventions
+    - Load relevant coding skills for the project stack
+    - Use UV commands (uv run, uv add) not pip
+  verify:
+    - Run tests: uv run pytest tests/ -v
+    - Compare implementation against every spec scenario
+  archive:
+    - Warn before merging destructive deltas (large removals)

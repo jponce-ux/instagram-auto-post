@@ -1,4 +1,4 @@
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import jwt, JWTError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -38,3 +38,27 @@ async def get_current_user(
             detail="User not found",
         )
     return user
+
+
+async def get_current_user_optional(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+) -> User | None:
+    """
+    Extract and validate JWT from 'access_token' cookie.
+    Returns User if valid, None if missing/invalid/expired.
+    Never raises HTTPException.
+    """
+    token = request.cookies.get("access_token")
+    if not token:
+        return None
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
+        email = payload.get("sub")
+        if not email:
+            return None
+    except JWTError:
+        return None
+
+    result = await db.execute(select(User).where(User.email == email))
+    return result.scalar_one_or_none()

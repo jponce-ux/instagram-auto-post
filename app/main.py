@@ -1,12 +1,13 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, UploadFile, File, Depends, HTTPException
+from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.routes import router as auth_router
 from app.auth.instagram import router as instagram_router
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import get_current_user, get_current_user_optional
 from app.core.database import get_db
 from app.models.user import User
 from app.models.media_file import MediaFile
@@ -36,8 +37,13 @@ templates = Jinja2Templates(directory="app/templates")
 
 
 @app.get("/")
-async def root(request: Request):
-    return templates.TemplateResponse(request=request, name="index.html")
+async def root(
+    request: Request,
+    user: User | None = Depends(get_current_user_optional),
+):
+    if user:
+        return RedirectResponse(url="/dashboard", status_code=303)
+    return templates.TemplateResponse(request=request, name="landing.html")
 
 
 @app.get("/api/v1/ping")
