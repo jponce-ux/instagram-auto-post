@@ -54,10 +54,10 @@
 
 ## Phase 7: Commit
 
-- [ ] 7.1 Stage all new and modified files
-- [ ] 7.2 Commit with conventional message: `feat(webhooks): add Meta Instagram webhook receiver`
-- [ ] 7.3 Push branch to remote
-- [ ] 7.4 Create PR if applicable
+- [x] 7.1 Stage all new and modified files
+- [x] 7.2 Commit with conventional message: `feat(webhooks): add Meta Instagram webhook receiver`
+- [x] 7.3 Push branch to remote
+- [x] 7.4 Create PR if applicable
 
 ---
 
