@@ -3,21 +3,45 @@
 {% block title %}Bienvenido - Mi App Instagram{% endblock %}
 
 {% block content %}
-<div class="min-h-[80vh] flex items-center justify-center px-4">
-    <div class="max-w-2xl w-full text-center">
-        <h1 class="text-5xl font-extrabold text-gray-900 mb-6">
-            Gestiona tu Instagram desde un solo lugar
-        </h1>
-        <p class="text-xl text-gray-600 mb-8">
-            Publica contenido, programa posts y analiza el rendimiento de tu cuenta.
-        </p>
-        <div class="flex flex-col sm:flex-row gap-4 justify-center">
-            <a href="/auth/login" class="inline-flex items-center justify-center px-8 py-3 text-lg font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors">
-                Iniciar Sesión
-            </a>
-            <a href="/auth/register" class="inline-flex items-center justify-center px-8 py-3 text-lg font-medium text-blue-600 bg-white hover:bg-gray-50 border-2 border-blue-600 rounded-lg transition-colors">
-                Crear Cuenta
-            </a>
+<div class="flex flex-col md:flex-row min-h-[80vh]">
+    {# Left side: Marketing text #}
+    <div class="w-full md:w-1/2 flex items-center justify-center p-8 md:p-16 bg-white">
+        <div class="max-w-lg">
+            <h1 class="text-4xl md:text-5xl font-extrabold text-gray-900 mb-6 leading-tight">
+                Gestiona tu Instagram desde un solo lugar
+            </h1>
+            <p class="text-xl text-gray-600 mb-8">
+                Publica contenido, programa posts y analiza el rendimiento de tu cuenta.
+            </p>
+            <div class="hidden md:block">
+                <div class="space-y-4">
+                    <div class="flex items-center space-x-3">
+                        <svg class="w-6 h-6 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                        </svg>
+                        <span class="text-gray-700">Publica fotos y videos en el momento perfecto</span>
+                    </div>
+                    <div class="flex items-center space-x-3">
+                        <svg class="w-6 h-6 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                        </svg>
+                        <span class="text-gray-700">Programa tu contenido con anticipación</span>
+                    </div>
+                    <div class="flex items-center space-x-3">
+                        <svg class="w-6 h-6 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                        </svg>
+                        <span class="text-gray-700">Analiza el rendimiento de tus publicaciones</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    {# Right side: Auth form #}
+    <div class="w-full md:w-1/2 flex items-center justify-center p-8 bg-gray-50">
+        <div class="w-full max-w-md">
+            {% include "components/auth_form.html" %}
         </div>
     </div>
 </div>

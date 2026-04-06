@@ -1,5 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException, Request, status
-from fastapi.responses import RedirectResponse
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,6 +8,7 @@ from app.core.database import get_db
 from app.auth.security import verify_password, get_password_hash, create_access_token
 from app.auth.dependencies import get_current_user_optional
 from app.auth.schemas import UserRegister, UserResponse, Token
+from app.auth.utils import is_htmx_request
 from app.models.user import User
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -36,6 +37,26 @@ async def register_page(
     return templates.TemplateResponse(request=request, name="auth/register.html")
 
 
+@router.get("/login-form")
+async def login_form(request: Request):
+    """HTMX endpoint returning login form partial."""
+    return templates.TemplateResponse(
+        request=request,
+        name="components/auth_form.html",
+        headers={"HX-Retarget": "#auth-form-box"},
+    )
+
+
+@router.get("/register-form")
+async def register_form(request: Request):
+    """HTMX endpoint returning register form partial."""
+    return templates.TemplateResponse(
+        request=request,
+        name="components/register_form.html",
+        headers={"HX-Retarget": "#auth-form-box"},
+    )
+
+
 @router.post("/register", response_model=UserResponse)
 async def register(user_data: UserRegister, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).where(User.email == user_data.email))
@@ -57,21 +78,51 @@ async def register(user_data: UserRegister, db: AsyncSession = Depends(get_db)):
     return user
 
 
-@router.post("/login", response_model=Token)
+@router.post("/login")
 async def login(
-    form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = Depends(get_db)
+    request: Request,
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    db: AsyncSession = Depends(get_db),
 ):
+    """Login endpoint with HTMX support."""
     result = await db.execute(select(User).where(User.email == form_data.username))
     user = result.scalar_one_or_none()
 
     if not user or not verify_password(form_data.password, user.hashed_password):
+        # Handle HTMX vs regular request
+        if is_htmx_request(request):
+            # Return error fragment for HTMX
+            return HTMLResponse(
+                content='<div id="error-message" class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-4">Credenciales incorrectas</div>',
+                status_code=200,
+                headers={"HX-Reswap": "innerHTML"},
+            )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
         )
 
     access_token = create_access_token(data={"sub": user.email})
-    return Token(access_token=access_token)
+
+    # Handle HTMX vs regular request
+    if is_htmx_request(request):
+        # Return redirect header for HTMX
+        response = HTMLResponse(
+            content="<html><body>Redirecting...</body></html>", status_code=200
+        )
+        response.headers["HX-Redirect"] = "/dashboard"
+        return response
+
+    # Regular response - set cookie and redirect
+    response = RedirectResponse(url="/dashboard", status_code=303)
+    response.set_cookie(
+        key="access_token",
+        value=f"Bearer {access_token}",
+        httponly=True,
+        secure=False,  # Set to True in production
+        samesite="lax",
+    )
+    return response
 
 
 @router.get("/logout")
