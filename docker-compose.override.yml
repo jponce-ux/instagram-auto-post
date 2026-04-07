@@ -1,0 +1,14 @@
+services:
+  web:
+    volumes:
+      - ./app/templates:/app/app/templates:rw
+      - ./app/auth:/app/app/auth:rw
+      - ./app/dashboard:/app/app/dashboard:rw
+      - ./app/webhooks:/app/app/webhooks:rw
+      - ./app/core:/app/app/core:rw
+      - ./pyproject.toml:/app/pyproject.toml:ro
+      - ./uv.lock:/app/uv.lock:ro
+    command: uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    environment:
+      - ENV=development
+      - PYTHONDONTWRITEBYTECODE=1
