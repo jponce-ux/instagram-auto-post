@@ -1,8 +1,8 @@
 # Tareas: Entorno de Desarrollo con Hot-Reload (DX)
 
-**Estado**: En Progreso
-**Progreso**: 4/5 tareas
-**Fase Actual**: Fase 2: Verificacion
+**Estado**: Completado
+**Progreso**: 5/5 tareas
+**Fase Actual**: —
 
 ## Fase 1: Implementacion
 
@@ -13,7 +13,7 @@
 
 ## Fase 2: Verificacion
 
-- [ ] T005 [P] Probar flujo de hot-reload: modificar archivo .py y verificar reinicio de Uvicorn en logs
+- [x] T005 [P] Probar flujo de hot-reload: modificar archivo .py y verificar reinicio de Uvicorn en logs
 
 ---
 
