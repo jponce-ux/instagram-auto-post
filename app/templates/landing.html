@@ -38,11 +38,36 @@
         </div>
     </div>
     
-    {# Right side: Auth form #}
+    {# Right side: Auth forms #}
     <div class="w-full md:w-1/2 flex items-center justify-center p-8 bg-gray-50">
         <div class="w-full max-w-md">
-            {% include "components/auth_form.html" %}
+            {# Login form - visible by default #}
+            <div id="login-form-container">
+                {% include "components/auth_form.html" %}
+            </div>
+            
+            {# Register form - hidden by default #}
+            <div id="register-form-container" class="hidden">
+                {% include "components/register_form.html" %}
+            </div>
         </div>
     </div>
 </div>
+
+<script>
+// Switch between login and register forms
+function showRegisterForm() {
+    document.getElementById('login-form-container').classList.add('hidden');
+    document.getElementById('register-form-container').classList.remove('hidden');
+}
+
+function showLoginForm() {
+    document.getElementById('register-form-container').classList.add('hidden');
+    document.getElementById('login-form-container').classList.remove('hidden');
+}
+
+// Expose functions globally for HTMX links
+window.showRegisterForm = showRegisterForm;
+window.showLoginForm = showLoginForm;
+</script>
 {% endblock %}

@@ -11,7 +11,8 @@
         </div>
         
         <div class="bg-white shadow-md rounded-lg p-8">
-            <form method="POST" action="/auth/login">
+            <form id="login-form" method="POST" onsubmit="return handleLoginSubmit(event)">
+                <div id="login-error" class="hidden bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-4"></div>
                 <div class="space-y-6">
                     <div>
                         <label for="username" class="block text-sm font-medium text-gray-700 mb-2">
@@ -43,6 +44,7 @@
                     
                     <button 
                         type="submit"
+                        id="login-submit"
                         class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg transition-colors"
                     >
                         Iniciar Sesión
@@ -59,4 +61,57 @@
         </div>
     </div>
 </div>
+
+<script>
+async function handleLoginSubmit(event) {
+    event.preventDefault();
+    
+    const form = document.getElementById('login-form');
+    const submitBtn = document.getElementById('login-submit');
+    const errorDiv = document.getElementById('login-error');
+    const formData = new FormData(form);
+    
+    errorDiv.classList.add('hidden');
+    
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Cargando...';
+    
+    try {
+        const response = await fetch('/auth/login', {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'HX-Request': 'true'
+            }
+        });
+        
+        if (response.ok) {
+            const json = await response.json();
+            
+            if (json.access_token) {
+                localStorage.setItem('access_token', json.access_token);
+                localStorage.setItem('user', JSON.stringify(json.user));
+            }
+            
+            const redirectUrl = response.headers.get('HX-Redirect') || response.headers.get('hx-redirect');
+            if (redirectUrl) {
+                window.location.href = redirectUrl;
+            }
+        } else {
+            const json = await response.json();
+            errorDiv.textContent = json.error || 'Error de autenticacion';
+            errorDiv.classList.remove('hidden');
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Iniciar Sesión';
+        }
+    } catch (error) {
+        errorDiv.textContent = 'Error de conexion';
+        errorDiv.classList.remove('hidden');
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Iniciar Sesión';
+    }
+    
+    return false;
+}
+</script>
 {% endblock %}

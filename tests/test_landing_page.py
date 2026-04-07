@@ -71,109 +71,14 @@ class TestIsHtmxRequest:
         assert result is False
 
 
-class TestAuthLoginFormEndpoint:
-    """Tests for GET /auth/login-form HTMX endpoint"""
-
-    def test_login_form_returns_partial_html(self):
-        """Scenario: HTMX request for login form partial
-        GIVEN a GET request to /auth/login-form with HX-Request header
-        WHEN the endpoint is called
-        THEN it returns partial HTML with login form content"""
-        from fastapi.testclient import TestClient
-        from app.main import app
-
-        client = TestClient(app)
-
-        response = client.get("/auth/login-form", headers={"HX-Request": "true"})
-
-        assert response.status_code == 200
-        assert "text/html" in response.headers.get("content-type", "")
-        # Should contain form elements
-        assert "<form" in response.text.lower()
-        assert "email" in response.text.lower() or "username" in response.text.lower()
-
-    def test_login_form_switch_link_to_register(self):
-        """Scenario: Login form contains link to switch to register
-        GIVEN the login form partial is returned
-        WHEN it is rendered
-        THEN it contains link with hx-get="/auth/register-form" to switch forms"""
-        from fastapi.testclient import TestClient
-        from app.main import app
-
-        client = TestClient(app)
-
-        response = client.get("/auth/login-form", headers={"HX-Request": "true"})
-
-        assert response.status_code == 200
-        # Should have HTMX-enabled link to register form
-        assert "/auth/register-form" in response.text
-
-
-class TestAuthRegisterFormEndpoint:
-    """Tests for GET /auth/register-form HTMX endpoint"""
-
-    def test_register_form_returns_partial_html(self):
-        """Scenario: HTMX request for register form partial
-        GIVEN a GET request to /auth/register-form with HX-Request header
-        WHEN the endpoint is called
-        THEN it returns partial HTML with register form content"""
-        from fastapi.testclient import TestClient
-        from app.main import app
-
-        client = TestClient(app)
-
-        response = client.get("/auth/register-form", headers={"HX-Request": "true"})
-
-        assert response.status_code == 200
-        assert "text/html" in response.headers.get("content-type", "")
-        # Should contain form elements
-        assert "<form" in response.text.lower()
-
-    def test_register_form_contains_all_required_fields(self):
-        """Scenario: Register form contains all required fields
-        GIVEN the register form partial is returned
-        WHEN it is rendered
-        THEN it contains username, email, password, and confirm_password fields"""
-        from fastapi.testclient import TestClient
-        from app.main import app
-
-        client = TestClient(app)
-
-        response = client.get("/auth/register-form", headers={"HX-Request": "true"})
-
-        assert response.status_code == 200
-        text = response.text.lower()
-        # Check for required fields
-        assert "username" in text
-        assert "email" in text
-        assert "password" in text
-        assert "confirm" in text or "confirm_password" in text
-
-    def test_register_form_switch_link_to_login(self):
-        """Scenario: Register form contains link to switch back to login
-        GIVEN the register form partial is returned
-        WHEN it is rendered
-        THEN it contains link with hx-get="/auth/login-form" to switch forms"""
-        from fastapi.testclient import TestClient
-        from app.main import app
-
-        client = TestClient(app)
-
-        response = client.get("/auth/register-form", headers={"HX-Request": "true"})
-
-        assert response.status_code == 200
-        # Should have HTMX-enabled link back to login form
-        assert "/auth/login-form" in response.text
-
-
 class TestLoginPostWithHtmx:
     """Tests for POST /auth/login with HTMX header"""
 
     def test_login_htmx_success_returns_hx_redirect_header(self):
-        """Scenario: HTMX login with valid credentials returns HX-Redirect
+        """Scenario: HTMX login with valid credentials returns HX-Redirect and JSON
         GIVEN a POST to /auth/login with valid credentials and HTMX header
         WHEN the user has valid email and password
-        THEN response includes HX-Redirect: /dashboard header"""
+        THEN response includes HX-Redirect: /dashboard header and JSON body with token"""
         from fastapi.testclient import TestClient
         from app.main import app
         from app.core.database import get_db
@@ -185,11 +90,12 @@ class TestLoginPostWithHtmx:
         mock_session = AsyncMock()
         mock_result = MagicMock()
 
-        # Create a mock user
+        # Create a mock user with proper values
         mock_user = MagicMock()
         mock_user.email = "testlogin@example.com"
         mock_user.hashed_password = "hashedpassword"
         mock_user.id = 1
+        mock_user.is_active = True
 
         mock_result.scalar_one_or_none.return_value = mock_user
         mock_session.execute.return_value = mock_result
@@ -226,15 +132,23 @@ class TestLoginPostWithHtmx:
                 "HX-Redirect"
             ) or response.headers.get("hx-redirect", "")
             assert "/dashboard" in redirect_header.lower()
+
+            # Should return JSON with token
+            assert "application/json" in response.headers.get("content-type", "")
+            json_data = response.json()
+            assert "access_token" in json_data
+            assert json_data["token_type"] == "bearer"
+            assert "user" in json_data
+            assert json_data["user"]["email"] == "testlogin@example.com"
         finally:
             # Clean up dependency override
             app.dependency_overrides.clear()
 
-    def test_login_htmx_failure_returns_error_fragment(self):
-        """Scenario: HTMX login with invalid credentials returns error fragment
+    def test_login_htmx_failure_returns_json_error(self):
+        """Scenario: HTMX login with invalid credentials returns JSON error
         GIVEN a POST to /auth/login with invalid credentials and HTMX header
         WHEN the credentials are incorrect
-        THEN response includes HTML error fragment, not redirect"""
+        THEN response includes JSON error with 401 status"""
         from fastapi.testclient import TestClient
         from app.main import app
         from app.core.database import get_db
@@ -271,13 +185,11 @@ class TestLoginPostWithHtmx:
             ) or response.headers.get("hx-redirect", "")
             assert "/dashboard" not in redirect_header.lower()
 
-            # Should return HTML with error message
-            assert "text/html" in response.headers.get("content-type", "")
-            assert (
-                "error" in response.text.lower()
-                or "incorrect" in response.text.lower()
-                or "invalid" in response.text.lower()
-            )
+            # Should return JSON with error
+            assert response.status_code == 401
+            assert "application/json" in response.headers.get("content-type", "")
+            json_data = response.json()
+            assert "error" in json_data
         finally:
             # Clean up dependency override
             app.dependency_overrides.clear()

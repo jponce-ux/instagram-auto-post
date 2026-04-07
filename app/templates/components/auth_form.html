@@ -1,6 +1,6 @@
-{# HTMX login form partial #}
+{# Login form partial #}
 <div id="auth-form-box">
-    <form id="login-form" hx-post="/auth/login" hx-target="#auth-form-box" hx-swap="outerHTML" method="post" class="space-y-4" onsubmit="return handleLoginSubmit(event)">
+    <form id="login-form" method="post" class="space-y-4" onsubmit="return handleLoginSubmit(event)">
         <div id="login-error" class="hidden bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-4"></div>
         <div>
             <label for="email" class="block text-sm font-medium text-gray-700">Correo electronico</label>
@@ -22,7 +22,7 @@
         </div>
     </form>
     <div class="mt-4 text-center text-sm text-gray-600">
-        No tienes cuenta? <a href="#" hx-get="/auth/register-form" hx-target="#auth-form-box" hx-swap="outerHTML" class="text-blue-600 hover:text-blue-800 font-medium">Registrate</a>
+        No tienes cuenta? <a href="#" onclick="showRegisterForm(); return false;" class="text-blue-600 hover:text-blue-800 font-medium cursor-pointer">Registrate</a>
     </div>
 </div>
 
@@ -35,10 +35,8 @@ async function handleLoginSubmit(event) {
     const errorDiv = document.getElementById('login-error');
     const formData = new FormData(form);
     
-    // Hide previous error
     errorDiv.classList.add('hidden');
     
-    // Disable submit button
     submitBtn.disabled = true;
     submitBtn.textContent = 'Cargando...';
     
@@ -52,40 +50,27 @@ async function handleLoginSubmit(event) {
         });
         
         if (response.ok) {
-            // Check for HX-Redirect header
+            const json = await response.json();
+            
+            if (json.access_token) {
+                localStorage.setItem('access_token', json.access_token);
+                localStorage.setItem('user', JSON.stringify(json.user));
+            }
+            
             const redirectUrl = response.headers.get('HX-Redirect') || response.headers.get('hx-redirect');
             if (redirectUrl) {
                 window.location.href = redirectUrl;
-            } else {
-                // If no redirect, check if it's an error response we should handle
-                const text = await response.text();
-                if (text.includes('error-message') || text.includes('Credenciales')) {
-                    showToast('error', 'Error de autenticacion');
-                    submitBtn.disabled = false;
-                    submitBtn.textContent = 'Iniciar Sesion';
-                }
             }
         } else {
-            // Handle error response
-            let errorMessage = 'Error de autenticacion';
-            try {
-                const text = await response.text();
-                if (text.includes('error-message')) {
-                    // Extract error from HTML fragment
-                    const match = text.match(/class="([^"]*error[^"]*)"[^>]*>([^<]+)/);
-                    if (match) {
-                        errorMessage = 'Credenciales incorrectas';
-                    }
-                }
-            } catch (e) {
-                // Use generic message
-            }
-            showToast('error', errorMessage);
+            const json = await response.json();
+            errorDiv.textContent = json.error || 'Error de autenticacion';
+            errorDiv.classList.remove('hidden');
             submitBtn.disabled = false;
             submitBtn.textContent = 'Iniciar Sesion';
         }
     } catch (error) {
-        showToast('error', 'Error de conexion');
+        errorDiv.textContent = 'Error de conexion';
+        errorDiv.classList.remove('hidden');
         submitBtn.disabled = false;
         submitBtn.textContent = 'Iniciar Sesion';
     }

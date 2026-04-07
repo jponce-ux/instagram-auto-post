@@ -52,6 +52,8 @@ async def get_current_user_optional(
     token = request.cookies.get("access_token")
     if not token:
         return None
+    if token.startswith("Bearer "):
+        token = token[7:]
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
         email = payload.get("sub")

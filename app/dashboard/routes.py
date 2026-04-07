@@ -20,7 +20,7 @@ async def dashboard_index(
     """Main dashboard page with accounts, post form, and history."""
     user = await get_current_user_optional(request)
     if user is None:
-        return RedirectResponse(url="/", status_code=303)
+        return RedirectResponse(url="/auth/login", status_code=303)
 
     accounts = await get_user_accounts(db, user)
     posts = await get_user_posts(db, user)
