@@ -80,35 +80,21 @@ async function handleLoginSubmit(event) {
         const response = await fetch('/auth/login', {
             method: 'POST',
             body: formData,
-            headers: {
-                'HX-Request': 'true'
-            }
         });
         
-        if (response.ok) {
-            const json = await response.json();
-            
-            if (json.access_token) {
-                localStorage.setItem('access_token', json.access_token);
-                localStorage.setItem('user', JSON.stringify(json.user));
-            }
-            
-            const redirectUrl = response.headers.get('HX-Redirect') || response.headers.get('hx-redirect');
-            if (redirectUrl) {
-                window.location.href = redirectUrl;
-            }
-        } else {
-            const json = await response.json();
-            errorDiv.textContent = json.error || 'Error de autenticacion';
+        if (response.redirected) {
+            window.location.href = response.url;
+        } else if (!response.ok) {
+            errorDiv.textContent = 'Error de autenticacion';
             errorDiv.classList.remove('hidden');
             submitBtn.disabled = false;
-            submitBtn.textContent = 'Iniciar Sesión';
+            submitBtn.textContent = 'Iniciar Sesion';
         }
     } catch (error) {
         errorDiv.textContent = 'Error de conexion';
         errorDiv.classList.remove('hidden');
         submitBtn.disabled = false;
-        submitBtn.textContent = 'Iniciar Sesión';
+        submitBtn.textContent = 'Iniciar Sesion';
     }
     
     return false;

@@ -1,4 +1,4 @@
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -10,24 +10,23 @@ class Settings(BaseSettings):
     BASE_URL: str = "http://localhost:8000"
 
     # MinIO Configuration
-    MINIO_ENDPOINT: str = "http://minio:9000"
-    MINIO_ROOT_USER: str = "minioadmin"
-    MINIO_ROOT_PASSWORD: str = "minioadmin123"
-    MINIO_BUCKET_NAME: str = "instagram-uploads"
-    MINIO_TUNNEL_HOST: str = (
-        ""  # Tunnel host for presigned URLs (e.g., instagramjp.domain.com)
-    )
-    MINIO_SSE_ENABLED: bool = False  # Server-side encryption (SSE-S3)
+    MINIO_ENDPOINT: str
+    MINIO_ROOT_USER: str
+    MINIO_ROOT_PASSWORD: str
+    MINIO_BUCKET_NAME: str
+    MINIO_TUNNEL_HOST: str = ""
+    MINIO_SSE_ENABLED: bool = False
 
     # Celery Configuration
-    CELERY_BROKER_URL: str = "redis://redis:6379/0"
+    CELERY_BROKER_URL: str
 
     # Meta Webhook Configuration
     META_WEBHOOK_VERIFY_TOKEN: str = ""
 
-    class Config:
-        env_file = ".env"
-        extra = "ignore"
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        extra="ignore",
+    )
 
 
 settings = Settings()

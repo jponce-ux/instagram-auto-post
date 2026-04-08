@@ -121,25 +121,12 @@ class TestLoginPostWithHtmx:
                             "password": "testpassword123",
                         },
                         headers={"HX-Request": "true"},
+                        follow_redirects=False,
                     )
 
-            # Should have HX-Redirect header pointing to dashboard
-            assert "HX-Redirect" in response.headers or "hx-redirect" in [
-                h.lower() for h in response.headers
-            ]
-            # Check the redirect target contains /dashboard
-            redirect_header = response.headers.get(
-                "HX-Redirect"
-            ) or response.headers.get("hx-redirect", "")
-            assert "/dashboard" in redirect_header.lower()
-
-            # Should return JSON with token
-            assert "application/json" in response.headers.get("content-type", "")
-            json_data = response.json()
-            assert "access_token" in json_data
-            assert json_data["token_type"] == "bearer"
-            assert "user" in json_data
-            assert json_data["user"]["email"] == "testlogin@example.com"
+            # Should redirect to /dashboard
+            assert response.status_code == 303
+            assert response.headers.get("location") == "/dashboard"
         finally:
             # Clean up dependency override
             app.dependency_overrides.clear()
@@ -177,19 +164,12 @@ class TestLoginPostWithHtmx:
                         "password": "wrongpassword",
                     },
                     headers={"HX-Request": "true"},
+                    follow_redirects=False,
                 )
 
-            # Should NOT have redirect header pointing to dashboard
-            redirect_header = response.headers.get(
-                "HX-Redirect"
-            ) or response.headers.get("hx-redirect", "")
-            assert "/dashboard" not in redirect_header.lower()
-
-            # Should return JSON with error
-            assert response.status_code == 401
-            assert "application/json" in response.headers.get("content-type", "")
-            json_data = response.json()
-            assert "error" in json_data
+            # Should redirect to /auth/login with error param
+            assert response.status_code == 303
+            assert "/auth/login?error=1" in response.headers.get("location", "")
         finally:
             # Clean up dependency override
             app.dependency_overrides.clear()

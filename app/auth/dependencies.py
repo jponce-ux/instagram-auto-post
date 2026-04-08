@@ -52,6 +52,11 @@ async def get_current_user_optional(
     token = request.cookies.get("access_token")
     if not token:
         return None
+    print(
+        f"[DEBUG] Token found in cookie: {token[:50]}..."
+        if len(token) > 50
+        else f"[DEBUG] Token found in cookie: {token}"
+    )
     if token.startswith("Bearer "):
         token = token[7:]
     try:

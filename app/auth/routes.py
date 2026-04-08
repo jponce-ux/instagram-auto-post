@@ -64,37 +64,24 @@ async def register(
 @router.post("/login")
 async def login(
     request: Request,
-    response: Response,
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: AsyncSession = Depends(get_db),
 ):
-    """Login endpoint - returns JSON with token for frontend navigation.
-    Also sets access_token cookie for server-side authentication on page load."""
+    """Login endpoint - returns redirect with cookie for server-side authentication."""
     result = await db.execute(select(User).where(User.email == form_data.username))
     user = result.scalar_one_or_none()
 
     if not user or not verify_password(form_data.password, user.hashed_password):
-        return JSONResponse(
-            content={"error": "Error de autenticacion"},
-            status_code=401,
-        )
+        return RedirectResponse(url="/auth/login?error=1", status_code=303)
 
     access_token = create_access_token(data={"sub": user.email})
 
-    response = JSONResponse(
-        content={
-            "access_token": access_token,
-            "token_type": "bearer",
-            "user": {"id": user.id, "email": user.email, "is_active": user.is_active},
-        },
-        status_code=200,
-    )
-    response.headers["HX-Redirect"] = "/dashboard"
+    response = RedirectResponse(url="/dashboard", status_code=303)
     response.set_cookie(
         key="access_token",
         value=f"Bearer {access_token}",
         httponly=True,
-        secure=False,
+        secure=True,
         samesite="lax",
     )
     return response

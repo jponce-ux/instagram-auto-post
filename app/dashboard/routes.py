@@ -4,7 +4,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.auth.dependencies import get_current_user, get_current_user_optional
+from app.auth.dependencies import get_current_user_optional
 from app.models.user import User
 from app.dashboard.service import get_user_accounts, get_user_posts, create_post
 
@@ -18,7 +18,7 @@ async def dashboard_index(
     db: AsyncSession = Depends(get_db),
 ):
     """Main dashboard page with accounts, post form, and history."""
-    user = await get_current_user_optional(request)
+    user = await get_current_user_optional(request, db)
     if user is None:
         return RedirectResponse(url="/auth/login", status_code=303)
 
@@ -42,7 +42,7 @@ async def dashboard_accounts(
     db: AsyncSession = Depends(get_db),
 ):
     """Linked accounts section — returns fragment for HTMX or full page."""
-    user = await get_current_user_optional(request)
+    user = await get_current_user_optional(request, db)
     if user is None:
         return RedirectResponse(url="/", status_code=303)
 
@@ -69,7 +69,7 @@ async def posts_feed(
     db: AsyncSession = Depends(get_db),
 ):
     """Post history feed — HTMX fragment with polling support."""
-    user = await get_current_user_optional(request)
+    user = await get_current_user_optional(request, db)
     if user is None:
         return RedirectResponse(url="/", status_code=303)
 
@@ -90,7 +90,7 @@ async def create_post_endpoint(
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new post with image upload via HTMX form submission."""
-    user = await get_current_user_optional(request)
+    user = await get_current_user_optional(request, db)
     if user is None:
         return RedirectResponse(url="/", status_code=303)
     # Validate that a file was provided
