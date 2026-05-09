@@ -116,3 +116,106 @@ tests/
 ├── test_dashboard.py
 └── test_beat_scheduler.py
 ```
+
+<!-- SPECKIT START -->
+For additional context about technologies to be used, project structure,
+shell commands, and other important information, read the current plan
+<!-- SPECKIT END -->
+
+## Spec-Driven Development (SDD) Workflow
+
+This project uses **Spec-Driven Development** with hybrid artifact storage (files + Engram memory).
+
+### SDD Lifecycle
+
+```
+proposal → spec → design → tasks → apply → verify → archive
+```
+
+### Artifact Storage
+
+| Artifact | Location | Purpose |
+|----------|----------|---------|
+| Proposal | `openspec/changes/{spec-name}/proposal.md` | Problem statement, scope, capabilities |
+| Spec | `openspec/changes/{spec-name}/specs/{domain}/spec.md` | Requirements with Given/When/Then scenarios |
+| Design | `openspec/changes/{spec-name}/design.md` | Technical approach, architecture decisions |
+| Tasks | `openspec/changes/{spec-name}/tasks.md` | Implementation checklist by phase |
+| Progress | Engram `sdd/{spec-name}/apply-progress` | Cross-session implementation tracking |
+
+### Git Workflow
+
+```bash
+# Start new spec
+git checkout master
+git checkout -b feat/{spec-number}-{name}
+
+# After implementation
+git add .
+git commit -m "{type}({number}): {description}"
+git push origin feat/{spec-number}-{name}
+```
+
+### Spec Numbering Convention
+
+- Format: `spec-XXX-{kebab-case-name}`
+- Examples: `spec-011-celery-redis`, `spec-012-publicacion-estados-post-logica`
+
+### SDD Commands
+
+```bash
+# Fast-forward planning (all phases at once)
+/sdd-ff spec-{number}-{name}
+
+# Individual phases
+/sdd-propose {spec-name}     # Create proposal
+/sdd-spec {spec-name}         # Write specifications
+/sdd-design {spec-name}       # Create technical design
+/sdd-tasks {spec-name}        # Break down into tasks
+/sdd-apply {spec-name}        # Implement tasks
+/sdd-verify {spec-name}       # Verify implementation
+/sdd-archive {spec-name}      # Archive completed spec
+```
+
+### Completed Specs (Archived)
+
+| Spec | Name | Status |
+|------|------|--------|
+| SPEC-001 | scaffolding-init | ✅ Archived |
+| SPEC-002 | base-dependencies | ✅ Archived |
+| SPEC-003 | docker-setup | ✅ Archived |
+| SPEC-004 | hello-world-htmx | ✅ Archived |
+| SPEC-005 | db-async-setup | ✅ Archived |
+| SPEC-006 | auth-argon2-jwt | ✅ Archived |
+| SPEC-007 | meta-oauth-flow | ✅ Archived |
+| SPEC-008 | storage-minio | ✅ Archived |
+| SPEC-009 | cloudflare-tunnel | ✅ Archived |
+| SPEC-010 | privacidad-minio | ✅ Archived |
+
+### Pending Specs (Ready to Apply)
+
+| Spec | Name | Dependencies |
+|------|------|--------------|
+| SPEC-011 | celery-redis | None |
+| SPEC-012 | publicacion-estados-post-logica | SPEC-011 |
+| SPEC-013 | user-dashboard | SPEC-011, SPEC-012 |
+| SPEC-014 | celery-beat-scheduler | SPEC-011, SPEC-012 |
+| SPEC-015 | meta-webhooks | SPEC-009, SPEC-012 |
+
+### Implementation Order
+
+```
+SPEC-011 (Celery + Redis)
+       ↓
+SPEC-012 (Post Model + Publishing Logic)
+       ↓
+SPEC-013 (Dashboard UI) ─┬─→ SPEC-014 (Beat Scheduler)
+                         └─→ SPEC-015 (Meta Webhooks)
+```
+
+### Key SDD Rules
+
+1. **Never skip phases**: proposal → spec → design → tasks → apply → verify → archive
+2. **One spec per branch**: Each spec gets its own `feat/XXX-{name}` branch
+3. **Hybrid mode**: Files in `openspec/changes/`, cross-session memory in Engram
+4. **Specs are contracts**: Implementation must match spec scenarios exactly
+5. **Archive after verify**: Only archive specs that pass verification

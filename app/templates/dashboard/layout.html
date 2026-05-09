@@ -9,12 +9,15 @@
         <p class="mt-1 text-sm text-gray-500">Bienvenido, {{ user.email }}</p>
     </div>
 
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <!-- Main Grid: Accounts + Post Form (only if has accounts) -->
+    <div id="main-grid" class="grid grid-cols-1 lg:grid-cols-2 gap-6 hidden">
         <!-- Accounts Section -->
         <div class="bg-white rounded-lg shadow p-6">
             <h2 class="text-lg font-semibold text-gray-900 mb-4">Cuentas Conectadas</h2>
             <div id="accounts-section">
-                {% include "dashboard/accounts_partial.html" %}
+                <div class="text-center py-4">
+                    <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600 mx-auto"></div>
+                </div>
             </div>
         </div>
 
@@ -27,15 +30,222 @@
         </div>
     </div>
 
+    <!-- No Accounts: Full width accounts section -->
+    <div id="no-accounts-section" class="bg-white rounded-lg shadow p-6 hidden">
+        <h2 class="text-lg font-semibold text-gray-900 mb-4">Cuentas Conectadas</h2>
+        <div id="accounts-section-no-accounts">
+            <div class="text-center py-4">
+                <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600 mx-auto"></div>
+            </div>
+        </div>
+    </div>
+
     <!-- History Section -->
-    <div class="mt-6 bg-white rounded-lg shadow p-6">
+    <div id="history-wrapper" class="mt-6 bg-white rounded-lg shadow p-6 hidden">
         <h2 class="text-lg font-semibold text-gray-900 mb-4">Historial de Publicaciones</h2>
-        <div id="history-section"
-             hx-get="/dashboard/posts/feed"
-             hx-trigger="every 10s"
-             hx-swap="innerHTML">
-            {% include "dashboard/posts_feed.html" %}
+        <div id="history-section">
+            <div class="text-center py-8">
+                <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600 mx-auto"></div>
+                <p class="mt-2 text-sm text-gray-500">Cargando publicaciones...</p>
+            </div>
         </div>
     </div>
 </div>
+
+<script>
+async function loadAccounts() {
+    try {
+        const response = await fetch('/dashboard/accounts');
+        if (!response.ok) {
+            if (response.status === 401) {
+                window.location.href = '/auth/login';
+                return;
+            }
+            throw new Error('Error cargando cuentas');
+        }
+        const data = await response.json();
+        renderDashboard(data.accounts);
+    } catch (error) {
+        document.getElementById('accounts-section').innerHTML = `
+            <div class="text-center py-4 text-red-500">
+                Error cargando cuentas
+            </div>
+        `;
+        document.getElementById('accounts-section-no-accounts').innerHTML = `
+            <div class="text-center py-4 text-red-500">
+                Error cargando cuentas
+            </div>
+        `;
+    }
+}
+
+function renderDashboard(accounts) {
+    const hasAccounts = accounts && accounts.length > 0;
+    const mainGrid = document.getElementById('main-grid');
+    const noAccountsSection = document.getElementById('no-accounts-section');
+    const historyWrapper = document.getElementById('history-wrapper');
+
+    if (hasAccounts) {
+        // Show main grid with accounts + post form
+        mainGrid.classList.remove('hidden');
+        noAccountsSection.classList.add('hidden');
+        historyWrapper.classList.remove('hidden');
+        
+        renderAccounts(accounts);
+    } else {
+        // Show only accounts section prompting to connect
+        mainGrid.classList.add('hidden');
+        noAccountsSection.classList.remove('hidden');
+        historyWrapper.classList.add('hidden');
+        
+        renderAccountsNoAccounts();
+    }
+}
+
+function renderAccounts(accounts) {
+    const container = document.getElementById('accounts-section');
+    container.innerHTML = `
+        <div class="space-y-3">
+            ${accounts.map(account => `
+                <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                    <div class="flex items-center space-x-3">
+                        <div class="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center">
+                            <svg class="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 24 24">
+                                <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073z"/>
+                            </svg>
+                        </div>
+                        <div>
+                            <p class="text-sm font-medium text-gray-900">${account.username || account.instagram_account_id}</p>
+                            <p class="text-xs text-gray-500">Conectada</p>
+                        </div>
+                    </div>
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                        ${account.is_active ? 'Activa' : 'Inactiva'}
+                    </span>
+                </div>
+            `).join('')}
+        </div>
+    `;
+}
+
+function renderAccountsNoAccounts() {
+    const container = document.getElementById('accounts-section-no-accounts');
+    container.innerHTML = `
+        <div class="text-center py-8">
+            <svg class="mx-auto h-16 w-16 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/>
+            </svg>
+            <h3 class="mt-4 text-lg font-medium text-gray-900">Sin cuentas conectadas</h3>
+            <p class="mt-2 text-sm text-gray-500">Conecta tu primera cuenta de Instagram para comenzar a publicar contenido.</p>
+            <div class="mt-6">
+                <a href="/auth/instagram/login"
+                   class="inline-flex items-center px-6 py-3 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500">
+                    <svg class="-ml-1 mr-2 h-5 w-5" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073z"/>
+                    </svg>
+                    Conectar Cuenta de Instagram
+                </a>
+            </div>
+        </div>
+    `;
+}
+
+async function loadPosts() {
+    try {
+        const response = await fetch('/dashboard/posts/feed');
+        if (!response.ok) {
+            if (response.status === 401) {
+                window.location.href = '/auth/login';
+                return;
+            }
+            throw new Error('Error cargando publicaciones');
+        }
+        const data = await response.json();
+        renderPosts(data.posts);
+    } catch (error) {
+        document.getElementById('history-section').innerHTML = `
+            <div class="text-center py-8 text-red-500">
+                Error cargando publicaciones
+            </div>
+        `;
+    }
+}
+
+function renderPosts(posts) {
+    const container = document.getElementById('history-section');
+    if (!posts || posts.length === 0) {
+        container.innerHTML = `
+            <div class="text-center py-12">
+                <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
+                </svg>
+                <h3 class="mt-2 text-sm font-medium text-gray-900">Sin publicaciones</h3>
+                <p class="mt-1 text-sm text-gray-500">Crea tu primera publicación para comenzar.</p>
+            </div>
+        `;
+        return;
+    }
+
+    const statusLabels = {
+        'pending': { label: 'Pendiente', class: 'bg-yellow-100 text-yellow-800' },
+        'processing': { label: 'Procesando', class: 'bg-blue-100 text-blue-800' },
+        'published': { label: 'Publicado', class: 'bg-green-100 text-green-800' },
+        'failed': { label: 'Fallido', class: 'bg-red-100 text-red-800' }
+    };
+
+    container.innerHTML = `
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th scope="col" class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Imagen</th>
+                        <th scope="col" class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Descripción</th>
+                        <th scope="col" class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Estado</th>
+                        <th scope="col" class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Fecha</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                    ${posts.map(post => {
+                        const status = statusLabels[post.status] || statusLabels['pending'];
+                        const date = new Date(post.created_at).toLocaleString('es-ES', { 
+                            day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' 
+                        });
+                        return `
+                            <tr>
+                                <td class="px-4 py-4 whitespace-nowrap">
+                                    <div class="w-12 h-12 bg-gray-200 rounded-lg flex items-center justify-center">
+                                        <svg class="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                                        </svg>
+                                    </div>
+                                </td>
+                                <td class="px-4 py-4">
+                                    <div class="text-sm text-gray-900 truncate max-w-xs">
+                                        ${post.caption ? (post.caption.length > 100 ? post.caption.substring(0, 100) + '...' : post.caption) : '<span class="text-gray-400 italic">Sin descripción</span>'}
+                                    </div>
+                                </td>
+                                <td class="px-4 py-4 whitespace-nowrap">
+                                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${status.class}">
+                                        ${status.label}
+                                    </span>
+                                </td>
+                                <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-500">${date}</td>
+                            </tr>
+                        `;
+                    }).join('')}
+                </tbody>
+            </table>
+        </div>
+    `;
+}
+
+// Load data on page load
+document.addEventListener('DOMContentLoaded', function() {
+    loadAccounts();
+    loadPosts();
+    
+    // Poll for new posts every 10 seconds
+    setInterval(loadPosts, 10000);
+});
+</script>
 {% endblock %}

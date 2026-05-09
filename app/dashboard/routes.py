@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, Request, Form, UploadFile, File, HTTPException
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -8,11 +8,11 @@ from app.auth.dependencies import get_current_user_optional
 from app.models.user import User
 from app.dashboard.service import get_user_accounts, get_user_posts, create_post
 
-router = APIRouter(tags=["dashboard"])
+router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 templates = Jinja2Templates(directory="app/templates")
 
 
-@router.get("/dashboard", response_class=HTMLResponse)
+@router.get("/", response_class=HTMLResponse)
 async def dashboard_index(
     request: Request,
     db: AsyncSession = Depends(get_db),
@@ -36,76 +36,85 @@ async def dashboard_index(
     )
 
 
-@router.get("/dashboard/accounts", response_class=HTMLResponse)
+@router.get("/accounts")
 async def dashboard_accounts(
     request: Request,
     db: AsyncSession = Depends(get_db),
 ):
-    """Linked accounts section — returns fragment for HTMX or full page."""
+    """Linked accounts — returns JSON for AJAX/HTMX requests."""
     user = await get_current_user_optional(request, db)
     if user is None:
-        return RedirectResponse(url="/", status_code=303)
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
 
     accounts = await get_user_accounts(db, user)
 
-    # Check if this is an HTMX request for partial content
-    if request.headers.get("HX-Request"):
-        return templates.TemplateResponse(
-            request=request,
-            name="dashboard/accounts_partial.html",
-            context={"accounts": accounts},
-        )
-
-    return templates.TemplateResponse(
-        request=request,
-        name="dashboard/accounts.html",
-        context={"accounts": accounts, "user": user},
+    return JSONResponse(
+        content={
+            "accounts": [
+                {
+                    "id": acc.id,
+                    "instagram_account_id": acc.instagram_account_id,
+                    "username": acc.username,
+                    "is_active": acc.is_active,
+                }
+                for acc in accounts
+            ]
+        }
     )
 
 
-@router.get("/dashboard/posts/feed", response_class=HTMLResponse)
+@router.get("/posts/feed")
 async def posts_feed(
     request: Request,
     db: AsyncSession = Depends(get_db),
 ):
-    """Post history feed — HTMX fragment with polling support."""
+    """Post history feed — returns JSON for HTMX polling."""
     user = await get_current_user_optional(request, db)
     if user is None:
-        return RedirectResponse(url="/", status_code=303)
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
 
     posts = await get_user_posts(db, user)
 
-    return templates.TemplateResponse(
-        request=request,
-        name="dashboard/posts_feed.html",
-        context={"posts": posts},
+    return JSONResponse(
+        content={
+            "posts": [
+                {
+                    "id": post.id,
+                    "caption": post.caption,
+                    "status": post.status.value,
+                    "created_at": post.created_at.isoformat(),
+                }
+                for post in posts
+            ]
+        }
     )
 
 
-@router.post("/dashboard/post", response_class=HTMLResponse)
+@router.post("/post")
 async def create_post_endpoint(
     request: Request,
     caption: str = Form(""),
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
 ):
-    """Create a new post with image upload via HTMX form submission."""
+    """Create a new post with image upload. Returns JSON."""
     user = await get_current_user_optional(request, db)
     if user is None:
-        return RedirectResponse(url="/", status_code=303)
-    # Validate that a file was provided
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+
     if not file or not file.filename:
-        return templates.TemplateResponse(
-            request=request,
-            name="dashboard/post_form.html",
-            context={"error": "Image is required"},
-        )
+        return JSONResponse(status_code=400, content={"error": "Image is required"})
 
     post = await create_post(db, user, file, caption)
 
-    # Return success feedback with the new post
-    return templates.TemplateResponse(
-        request=request,
-        name="dashboard/post_form.html",
-        context={"success": True, "post": post},
+    return JSONResponse(
+        content={
+            "success": True,
+            "post": {
+                "id": post.id,
+                "caption": post.caption,
+                "status": post.status.value,
+                "created_at": post.created_at.isoformat(),
+            },
+        }
     )

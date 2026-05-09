@@ -73,6 +73,12 @@ async function handleRegisterSubmit(event) {
     const errorDiv = document.getElementById('register-error');
     const formData = new FormData(form);
     
+    // Remove confirm_password before sending
+    formData.delete("confirm_password");
+    
+    // Convert FormData to JSON object
+    const data = Object.fromEntries(formData.entries());
+    
     errorDiv.classList.add('hidden');
     
     submitBtn.disabled = true;
@@ -81,8 +87,9 @@ async function handleRegisterSubmit(event) {
     try {
         const response = await fetch('/auth/register', {
             method: 'POST',
-            body: formData,
+            body: JSON.stringify(data),
             headers: {
+                'Content-Type': 'application/json',
                 'HX-Request': 'true'
             }
         });
