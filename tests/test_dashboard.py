@@ -3,12 +3,20 @@ Tests for spec-013-user-dashboard
 User Dashboard with HTMX and Tailwind CSS
 """
 
+import os
 import pytest
 from datetime import datetime, timezone, timedelta
 from unittest.mock import Mock, patch, MagicMock, AsyncMock
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession
+
+# Set required env vars BEFORE importing app modules
+os.environ.setdefault("META_APP_SECRET", "test_app_secret_for_testing_12345")
+os.environ.setdefault("META_WEBHOOK_VERIFY_TOKEN", "test_verify_token_12345")
+os.environ.setdefault("SECRET_KEY", "test_secret_key_for_testing")
+os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://test:test@localhost/test")
+os.environ.setdefault("CELERY_BROKER_URL", "redis://redis:6379/0")
 
 from app.main import app
 from app.models.user import User

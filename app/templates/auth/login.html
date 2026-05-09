@@ -11,8 +11,7 @@
         </div>
         
         <div class="bg-white shadow-md rounded-lg p-8">
-            <form id="login-form" method="POST" onsubmit="return handleLoginSubmit(event)">
-                <div id="login-error" class="hidden bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-4"></div>
+            <form id="login-form" onsubmit="return handleLoginSubmit(event)">
                 <div class="space-y-6">
                     <div>
                         <label for="username" class="block text-sm font-medium text-gray-700 mb-2">
@@ -66,12 +65,8 @@
 async function handleLoginSubmit(event) {
     event.preventDefault();
     
-    const form = document.getElementById('login-form');
     const submitBtn = document.getElementById('login-submit');
-    const errorDiv = document.getElementById('login-error');
-    const formData = new FormData(form);
-    
-    errorDiv.classList.add('hidden');
+    const formData = new FormData(document.getElementById('login-form'));
     
     submitBtn.disabled = true;
     submitBtn.textContent = 'Cargando...';
@@ -85,19 +80,26 @@ async function handleLoginSubmit(event) {
         if (response.redirected) {
             window.location.href = response.url;
         } else if (!response.ok) {
-            errorDiv.textContent = 'Error de autenticacion';
-            errorDiv.classList.remove('hidden');
+            showToast('error', 'Correo o contraseña incorrectos');
             submitBtn.disabled = false;
-            submitBtn.textContent = 'Iniciar Sesion';
+            submitBtn.textContent = 'Iniciar Sesión';
         }
     } catch (error) {
-        errorDiv.textContent = 'Error de conexion';
-        errorDiv.classList.remove('hidden');
+        showToast('error', 'Error de conexión. Intenta de nuevo.');
         submitBtn.disabled = false;
-        submitBtn.textContent = 'Iniciar Sesion';
+        submitBtn.textContent = 'Iniciar Sesión';
     }
     
     return false;
 }
+
+// Show success toast if redirected from registration
+document.addEventListener('DOMContentLoaded', function() {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('registered') === '1') {
+        showToast('success', 'Cuenta creada exitosamente. Inicia sesión.');
+        window.history.replaceState({}, '', '/auth/login');
+    }
+});
 </script>
 {% endblock %}

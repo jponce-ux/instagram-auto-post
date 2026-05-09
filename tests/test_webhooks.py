@@ -20,6 +20,7 @@ os.environ["META_APP_SECRET"] = "test_app_secret_for_testing_12345"
 os.environ["META_WEBHOOK_VERIFY_TOKEN"] = "test_verify_token_12345"
 os.environ["SECRET_KEY"] = "test_secret_key_for_testing"
 os.environ["DATABASE_URL"] = "postgresql+asyncpg://test:test@localhost/test"
+os.environ["CELERY_BROKER_URL"] = "redis://redis:6379/0"
 
 # NOW import app modules after env vars are set
 from app.main import app

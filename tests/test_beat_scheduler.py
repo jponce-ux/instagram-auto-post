@@ -3,11 +3,19 @@ Tests for spec-014-celery-beat-scheduler
 Celery Beat scheduler for automatic post publishing
 """
 
+import os
 import pytest
 from datetime import datetime, timezone, timedelta
 from unittest.mock import Mock, patch, MagicMock
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+
+# Set required env vars BEFORE importing app modules
+os.environ.setdefault("META_APP_SECRET", "test_app_secret_for_testing_12345")
+os.environ.setdefault("META_WEBHOOK_VERIFY_TOKEN", "test_verify_token_12345")
+os.environ.setdefault("SECRET_KEY", "test_secret_key_for_testing")
+os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://test:test@localhost/test")
+os.environ.setdefault("CELERY_BROKER_URL", "redis://redis:6379/0")
 
 from app.worker import (
     celery_app,

@@ -246,6 +246,17 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Poll for new posts every 10 seconds
     setInterval(loadPosts, 10000);
+    
+    // Show toast based on URL query params (from OAuth redirect)
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('success') === 'instagram_connected') {
+        showToast('success', 'Cuenta de Instagram conectada exitosamente');
+        window.history.replaceState({}, '', '/dashboard');
+    }
+    if (params.get('error') === 'instagram_auth_failed') {
+        showToast('error', 'Error al conectar la cuenta de Instagram. Intenta de nuevo.');
+        window.history.replaceState({}, '', '/dashboard');
+    }
 });
 </script>
 {% endblock %}

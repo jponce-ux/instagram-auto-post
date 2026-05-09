@@ -7,7 +7,7 @@ from sqlalchemy import select
 from app.core.database import get_db
 from app.auth.security import verify_password, get_password_hash, create_access_token
 from app.auth.dependencies import get_current_user_optional
-from app.auth.schemas import UserRegister, UserResponse, Token
+from app.auth.schemas import UserRegister, Token
 from app.models.user import User
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -36,7 +36,7 @@ async def register_page(
     return templates.TemplateResponse(request=request, name="auth/register.html")
 
 
-@router.post("/register", response_model=UserResponse)
+@router.post("/register")
 async def register(
     request: Request,
     email: str = Form(...),
@@ -68,7 +68,8 @@ async def register(
     db.add(user)
     await db.commit()
     await db.refresh(user)
-    return user
+
+    return RedirectResponse(url="/auth/login?registered=1", status_code=303)
 
 
 @router.post("/login")

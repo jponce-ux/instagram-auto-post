@@ -9,12 +9,20 @@ FastAPI's TestClient and dependency overrides using Mock objects.
 The unit tests for get_current_user_optional provide coverage for the core logic.
 """
 
+import os
 import pytest
 from datetime import datetime, timedelta
 from unittest.mock import Mock, patch, MagicMock, AsyncMock
 from fastapi.testclient import TestClient
 from fastapi import Request, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
+
+# Set required env vars BEFORE importing app modules
+os.environ.setdefault("META_APP_SECRET", "test_app_secret_for_testing_12345")
+os.environ.setdefault("META_WEBHOOK_VERIFY_TOKEN", "test_verify_token_12345")
+os.environ.setdefault("SECRET_KEY", "test_secret_key_for_testing")
+os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://test:test@localhost/test")
+os.environ.setdefault("CELERY_BROKER_URL", "redis://redis:6379/0")
 
 from app.main import app
 from app.auth.dependencies import get_current_user_optional

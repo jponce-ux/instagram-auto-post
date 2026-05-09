@@ -18,7 +18,7 @@
         </div>
         <div>
             <label for="register-confirm" class="block text-sm font-medium text-gray-700">Confirmar contrasena</label>
-            <input type="password" id="register-confirm" name="confirm_password" required minlength="6"
+            <input type="password" id="register-confirm" name="password_confirm" required minlength="6"
                    class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
                    placeholder="Repite la contrasena"
                    oninput="validateRegisterForm()">
@@ -73,12 +73,6 @@ async function handleRegisterSubmit(event) {
     const errorDiv = document.getElementById('register-error');
     const formData = new FormData(form);
     
-    // Remove confirm_password before sending
-    formData.delete("confirm_password");
-    
-    // Convert FormData to JSON object
-    const data = Object.fromEntries(formData.entries());
-    
     errorDiv.classList.add('hidden');
     
     submitBtn.disabled = true;
@@ -87,24 +81,23 @@ async function handleRegisterSubmit(event) {
     try {
         const response = await fetch('/auth/register', {
             method: 'POST',
-            body: JSON.stringify(data),
-            headers: {
-                'Content-Type': 'application/json',
-                'HX-Request': 'true'
-            }
+            body: formData,
         });
         
-        if (response.ok) {
-            showToast('success', 'Cuenta creada. Ahora puedes iniciar sesion.');
-            setTimeout(() => {
-                window.location.href = '/auth/login';
-            }, 1500);
+        if (response.redirected) {
+            window.location.href = response.url;
         } else {
             const json = await response.json();
-            errorDiv.textContent = json.error || 'Error en el registro';
-            errorDiv.classList.remove('hidden');
-            submitBtn.disabled = false;
-            submitBtn.textContent = 'Crear Cuenta';
+            if (response.ok) {
+                showToast('success', 'Cuenta creada exitosamente. Redirigiendo...');
+                setTimeout(() => {
+                    window.location.href = '/auth/login';
+                }, 1500);
+            } else {
+                showToast('error', json.error || 'Error en el registro');
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Crear Cuenta';
+            }
         }
     } catch (error) {
         showToast('error', 'Error de conexion');
