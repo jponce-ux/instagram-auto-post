@@ -44,11 +44,10 @@ class TestBeatScheduleConfiguration:
         THEN task is scheduled to run every 60 seconds"""
         schedule = celery_app.conf.beat_schedule["check-scheduled-posts"]
         assert schedule["task"] == "app.worker.check_scheduled_posts"
-        # Verify it's using celery.schedules.interval
-        from celery.schedules import interval as Interval
+        # The schedule is a timedelta object directly
+        from datetime import timedelta
 
-        assert isinstance(schedule["schedule"], Interval)
-        assert schedule["schedule"].run_every.total_seconds() == 60
+        assert schedule["schedule"] == timedelta(seconds=60)
 
 
 # Test: Debug Task
