@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status, Form
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.templating import Jinja2Templates
@@ -38,11 +38,21 @@ async def register_page(
 
 @router.post("/register", response_model=UserResponse)
 async def register(
-    request: Request, user_data: UserRegister, db: AsyncSession = Depends(get_db)
+    request: Request,
+    email: str = Form(...),
+    password: str = Form(...),
+    password_confirm: str = Form(...),
+    db: AsyncSession = Depends(get_db),
 ):
     generic_error = "Error en el registro"
 
-    result = await db.execute(select(User).where(User.email == user_data.email))
+    if password != password_confirm:
+        return JSONResponse(
+            content={"error": "Las contraseñas no coinciden"},
+            status_code=400,
+        )
+
+    result = await db.execute(select(User).where(User.email == email))
     existing_user = result.scalar_one_or_none()
     if existing_user:
         return JSONResponse(
@@ -50,9 +60,9 @@ async def register(
             status_code=400,
         )
 
-    hashed_password = get_password_hash(user_data.password)
+    hashed_password = get_password_hash(password)
     user = User(
-        email=user_data.email,
+        email=email,
         hashed_password=hashed_password,
     )
     db.add(user)
