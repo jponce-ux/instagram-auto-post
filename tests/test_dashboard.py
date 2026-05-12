@@ -402,5 +402,3 @@ class TestDashboardService:
         mock_db.execute.assert_called_once()
 
 
-# Mark async tests
-pytestmark = pytest.mark.asyncio

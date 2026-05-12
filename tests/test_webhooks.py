@@ -650,5 +650,3 @@ class TestWebhookSecurityUnit:
         assert exc_info.value.status_code == 500
 
 
-# Mark async tests
-pytestmark = pytest.mark.asyncio

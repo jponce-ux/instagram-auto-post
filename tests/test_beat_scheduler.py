@@ -370,5 +370,3 @@ class TestQueryOrdering:
         mock_session.execute.assert_called_once()
 
 
-# Integration-style test marker
-pytestmark = pytest.mark.asyncio
