@@ -23,6 +23,11 @@ class Settings(BaseSettings):
     # Meta Webhook Configuration
     META_WEBHOOK_VERIFY_TOKEN: str = ""
 
+    # Resend Email Configuration
+    RESEND_API_KEY: str = ""
+    MAIL_FROM_ADDRESS: str = "onboarding@resend.dev"
+    MAIL_FROM_NAME: str = "Mi App Instagram"
+
     model_config = SettingsConfigDict(
         env_file=".env",
         extra="ignore",

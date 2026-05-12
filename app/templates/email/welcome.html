@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bienvenido a Mi App Instagram</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #f3f4f6; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color: #f3f4f6; padding: 40px 0;">
+        <tr>
+            <td align="center">
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width: 600px; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                    <!-- Header -->
+                    <tr>
+                        <td style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 40px 30px; text-align: center;">
+                            <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 700;">¡Bienvenido!</h1>
+                        </td>
+                    </tr>
+                    <!-- Body -->
+                    <tr>
+                        <td style="padding: 40px 30px;">
+                            <p style="margin: 0 0 16px 0; color: #374151; font-size: 16px; line-height: 1.6;">
+                                Hola <strong>{{ user_name }}</strong>,
+                            </p>
+                            <p style="margin: 0 0 16px 0; color: #374151; font-size: 16px; line-height: 1.6;">
+                                Tu cuenta en <strong>Mi App Instagram</strong> ha sido creada exitosamente. Ya estás listo para gestionar tu contenido de Instagram desde un solo lugar.
+                            </p>
+                            <p style="margin: 0 0 24px 0; color: #374151; font-size: 16px; line-height: 1.6;">
+                                Conecta tu cuenta de Instagram y comienza a publicar, programar y analizar el rendimiento de tu contenido.
+                            </p>
+                            <!-- CTA Button -->
+                            <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                                <tr>
+                                    <td align="center" style="padding: 10px 0 30px 0;">
+                                        <a href="{{ dashboard_url }}" style="display: inline-block; background-color: #667eea; color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 6px; font-size: 16px; font-weight: 600;">
+                                            Ir al Dashboard
+                                        </a>
+                                    </td>
+                                </tr>
+                            </table>
+                            <!-- Features -->
+                            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-top: 1px solid #e5e7eb; padding-top: 24px;">
+                                <tr>
+                                    <td style="padding: 8px 0;">
+                                        <p style="margin: 0; color: #6b7280; font-size: 14px;">
+                                            ✓ Publica fotos y videos en el momento perfecto
+                                        </p>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 8px 0;">
+                                        <p style="margin: 0; color: #6b7280; font-size: 14px;">
+                                            ✓ Programa tu contenido con anticipación
+                                        </p>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 8px 0;">
+                                        <p style="margin: 0; color: #6b7280; font-size: 14px;">
+                                            ✓ Analiza el rendimiento de tus publicaciones
+                                        </p>
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                    <!-- Footer -->
+                    <tr>
+                        <td style="background-color: #f9fafb; padding: 24px 30px; text-align: center; border-top: 1px solid #e5e7eb;">
+                            <p style="margin: 0 0 8px 0; color: #9ca3af; font-size: 12px;">
+                                Este email fue enviado porque te registraste en Mi App Instagram.
+                            </p>
+                            <p style="margin: 0; color: #9ca3af; font-size: 12px;">
+                                Si no creaste esta cuenta, puedes ignorar este email.
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>

@@ -9,6 +9,7 @@ from app.auth.security import verify_password, get_password_hash, create_access_
 from app.auth.dependencies import get_current_user_optional
 from app.auth.schemas import UserRegister, Token
 from app.models.user import User
+from app.services.email import EmailService
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 templates = Jinja2Templates(directory="app/templates")
@@ -68,6 +69,9 @@ async def register(
     db.add(user)
     await db.commit()
     await db.refresh(user)
+
+    # Send welcome email asynchronously (non-blocking via Celery)
+    EmailService.send_welcome_email(to=email, user_name=email.split("@")[0])
 
     return RedirectResponse(url="/auth/login?registered=1", status_code=303)
 

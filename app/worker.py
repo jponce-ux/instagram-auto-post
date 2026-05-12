@@ -250,3 +250,79 @@ def process_instagram_post(self, post_id: int) -> str:
             countdown = 60 * (2**retry_count)
             raise self.retry(exc=exc, countdown=countdown)
         raise
+
+
+# ============================================================
+# Email Tasks (Resend)
+# ============================================================
+
+@celery_app.task(
+    bind=True,
+    max_retries=3,
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_backoff_max=300,
+    retry_jitter=True,
+)
+def task_dispatch_resend_email(
+    self,
+    to: str,
+    subject: str,
+    html_body: str,
+    from_email: str | None = None,
+    from_name: str | None = None,
+) -> dict:
+    """
+    Celery task to send an email via Resend API.
+
+    Retries up to 3 times with exponential backoff for transient errors.
+    Does NOT retry for 4xx client errors (bad request, invalid email, etc.).
+
+    Args:
+        to: Recipient email address
+        subject: Email subject line
+        html_body: HTML content of the email
+        from_email: Sender email (defaults to MAIL_FROM_ADDRESS config)
+        from_name: Sender name (defaults to MAIL_FROM_NAME config)
+
+    Returns:
+        dict with 'message_id' on success
+
+    Raises:
+        resend.error.ResendError: On API failure (triggers retry for 5xx)
+    """
+    import resend
+    from app.core.config import settings
+
+    sender = from_email or settings.MAIL_FROM_ADDRESS
+    sender_name = from_name or settings.MAIL_FROM_NAME
+
+    params: resend.Emails.SendParams = resend.Emails.SendParams(
+        from_=f"{sender_name} <{sender}>",
+        to=[to],
+        subject=subject,
+        html=html_body,
+    )
+
+    try:
+        email_response = resend.Emails.send(params)
+        message_id = getattr(email_response, "id", "unknown")
+        logger.info(
+            f"Email sent successfully to {to}: message_id={message_id}"
+        )
+        return {"message_id": message_id, "to": to, "status": "sent"}
+    except Exception as e:
+        # Check if it's a 4xx client error — don't retry
+        status_code = getattr(e, "code", None)
+        if status_code and 400 <= status_code < 500:
+            logger.error(
+                f"Email failed (client error {status_code}) for {to}: {e}"
+            )
+            # Don't retry client errors
+            return {"error": str(e), "to": to, "status": "failed", "status_code": status_code}
+
+        # For 5xx or network errors, let Celery retry
+        logger.warning(
+            f"Email failed for {to} (will retry): {e}"
+        )
+        raise
