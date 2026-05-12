@@ -3,7 +3,7 @@ ticket: TASK-021
 phase: tasks
 model: qwen3.6-plus
 generated: 2026-05-11
-status: draft
+status: completed
 ---
 
 # Tasks: spec-017-email-notifications-resend
@@ -15,9 +15,9 @@ status: draft
 
 **Purpose**: Instalar dependencia y configurar variables de entorno
 
-- [ ] T001 Instalar paquete `resend` con `uv add resend` y verificar que `pyproject.toml` y `uv.lock` se actualizan
-- [ ] T002 [P] Agregar `RESEND_API_KEY`, `MAIL_FROM_ADDRESS`, `MAIL_FROM_NAME` a `.env.example`
-- [ ] T003 Agregar campos `RESEND_API_KEY`, `MAIL_FROM_ADDRESS`, `MAIL_FROM_NAME` a `Settings` en `app/core/config.py`
+- [x] T001 Instalar paquete `resend` con `uv add resend` y verificar que `pyproject.toml` y `uv.lock` se actualizan
+- [x] T002 [P] Agregar `RESEND_API_KEY`, `MAIL_FROM_ADDRESS`, `MAIL_FROM_NAME` a `.env.example`
+- [x] T003 Agregar campos `RESEND_API_KEY`, `MAIL_FROM_ADDRESS`, `MAIL_FROM_NAME` a `Settings` en `app/core/config.py`
 
 **Checkpoint**: Dependencia instalada y configuración lista
 
@@ -27,8 +27,8 @@ status: draft
 
 **Purpose**: Crear template HTML de bienvenida
 
-- [ ] T004 Crear directorio `app/templates/email/`
-- [ ] T005 Crear `app/templates/email/welcome.html` con template de bienvenida (HTML inline, responsive, con logo placeholder y mensaje de confirmación de registro)
+- [x] T004 Crear directorio `app/templates/email/`
+- [x] T005 Crear `app/templates/email/welcome.html` con template de bienvenida (HTML inline, responsive, con logo placeholder y mensaje de confirmación de registro)
 
 **Checkpoint**: Template de bienvenida listo
 
@@ -38,7 +38,7 @@ status: draft
 
 **Purpose**: Implementar la tarea física que invoca el SDK de Resend
 
-- [ ] T006 Crear `task_dispatch_resend_email` en `app/worker.py` con:
+- [x] T006 Crear `task_dispatch_resend_email` en `app/worker.py` con:
   - Parámetros: `to`, `subject`, `html_body`, `from_email`, `from_name`
   - Invocación de `resend.Emails.send()` con los parámetros
   - `autoretry_for=(Exception,)` con `max_retries=3` y backoff exponencial
@@ -54,12 +54,12 @@ status: draft
 
 **Purpose**: Implementar el servicio compartido que centraliza el envío de emails
 
-- [ ] T007 Crear `app/services/email.py` con clase `EmailService`:
+- [x] T007 Crear `app/services/email.py` con clase `EmailService`:
   - Método estático `send_transactional_email(to, subject, html_body)` → llama a `task_dispatch_resend_email.delay()`
   - Método estático `send_welcome_email(to, user_name)` → renderiza template welcome.html y llama a `send_transactional_email()`
   - Usar `jinja2.Environment` con `FileSystemLoader("app/templates/email")` para renderizar templates
   - Capturar excepción si Celery no está disponible (Redis caído) y loguear warning
-- [ ] T008 Verificar que `app/services/email.py` no causa dependencias circulares (no importa routers, solo config y worker)
+- [x] T008 Verificar que `app/services/email.py` no causa dependencias circulares (no importa routers, solo config y worker)
 
 **Checkpoint**: Servicio importable desde cualquier módulo sin dependencias circulares
 
@@ -69,8 +69,8 @@ status: draft
 
 **Purpose**: Conectar el servicio de email con el flujo de registro
 
-- [ ] T009 Modificar `app/auth/routes.py` → en el endpoint `POST /auth/register`, después de crear el usuario exitosamente, llamar a `EmailService.send_welcome_email(user.email)`
-- [ ] T010 Verificar que el registro no se ralentiza significativamente (el `delay()` de Celery retorna inmediatamente)
+- [x] T009 Modificar `app/auth/routes.py` → en el endpoint `POST /auth/register`, después de crear el usuario exitosamente, llamar a `EmailService.send_welcome_email(user.email)`
+- [x] T010 Verificar que el registro no se ralentiza significativamente (el `delay()` de Celery retorna inmediatamente)
 
 **Checkpoint**: Email de bienvenida se envía automáticamente al registrar un usuario
 
@@ -80,14 +80,14 @@ status: draft
 
 **Purpose**: Verificar funcionamiento correcto
 
-- [ ] T011 [P] Crear `tests/test_email.py` con:
+- [x] T011 [P] Crear `tests/test_email.py` con:
   - Test unitario: `EmailService.send_transactional_email()` encola tarea Celery (mock `task_dispatch_resend_email.delay`)
   - Test unitario: `EmailService.send_welcome_email()` renderiza template y encola tarea
   - Test unitario: `task_dispatch_resend_email` llama a `resend.Emails.send()` correctamente (mock Resend SDK)
   - Test de reintento: simular error 5xx y verificar que la tarea reintenta
   - Test de no-reintento: simular error 4xx y verificar que la tarea NO reintenta
-- [ ] T012 Ejecutar `uv run pytest tests/test_email.py -v` y verificar que todos pasan
-- [ ] T013 Ejecutar `uv run pytest tests/ -v` y verificar que no se rompen tests existentes
+- [x] T012 Ejecutar `uv run pytest tests/test_email.py -v` y verificar que todos pasan
+- [x] T013 Ejecutar `uv run pytest tests/ -v` y verificar que no se rompen tests existentes
 
 **Checkpoint**: Todos los tests pasan (nuevos + existentes)
 
@@ -97,9 +97,9 @@ status: draft
 
 **Purpose**: Verificar funcionamiento en entorno Docker
 
-- [ ] T014 Ejecutar `docker compose build web worker` para incluir el paquete `resend`
-- [ ] T015 Ejecutar `docker compose up` y verificar que el worker inicia sin errores de importación
-- [ ] T016 Registrar un usuario nuevo y verificar en logs del worker que el email se envió (o falló con log apropiado)
+- [x] T014 Ejecutar `docker compose build web worker` para incluir el paquete `resend`
+- [x] T015 Ejecutar `docker compose up` y verificar que el worker inicia sin errores de importación
+- [x] T016 Registrar un usuario nuevo y verificar en logs del worker que el email se envió (o falló con log apropiado)
 
 **Checkpoint**: Sistema funcionando en Docker compose
 

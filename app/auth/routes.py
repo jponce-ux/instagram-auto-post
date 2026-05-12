@@ -71,7 +71,7 @@ async def register(
     await db.refresh(user)
 
     # Send welcome email asynchronously (non-blocking via Celery)
-    EmailService.send_welcome_email(to=email, user_name=email.split("@")[0])
+    EmailService.send_welcome_email(to=email, user_name=email.split("@")[0], user_id=user.id)
 
     return RedirectResponse(url="/auth/login?registered=1", status_code=303)
 

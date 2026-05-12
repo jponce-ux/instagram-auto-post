@@ -18,13 +18,13 @@ Usage:
     EmailService.send_welcome_email(
         to="user@example.com",
         user_name="John",
+        user_id=42,  # optional: enables logging and idempotency
     )
 """
 
 import logging
 from pathlib import Path
 
-import resend
 from jinja2 import Environment, FileSystemLoader
 
 from app.core.config import settings
@@ -32,6 +32,7 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 # Configure Resend API key at module load time
+import resend
 resend.api_key = settings.RESEND_API_KEY
 
 # Jinja2 environment for email templates
@@ -48,6 +49,9 @@ class EmailService:
 
     All methods enqueue a Celery task and return immediately, ensuring
     the calling code is not blocked by the email API call.
+
+    When user_id is provided, email activity is logged to the database
+    and idempotency checks prevent duplicate sends within 24 hours.
     """
 
     @staticmethod
@@ -57,6 +61,7 @@ class EmailService:
         html_body: str,
         from_email: str | None = None,
         from_name: str | None = None,
+        log_id: int | None = None,
     ) -> None:
         """
         Send a transactional email by enqueueing a Celery task.
@@ -71,6 +76,7 @@ class EmailService:
             html_body: HTML content of the email
             from_email: Sender email (defaults to MAIL_FROM_ADDRESS)
             from_name: Sender name (defaults to MAIL_FROM_NAME)
+            log_id: Optional email_logs ID for status tracking
         """
         try:
             from app.worker import task_dispatch_resend_email
@@ -81,6 +87,7 @@ class EmailService:
                 html_body=html_body,
                 from_email=from_email,
                 from_name=from_name,
+                log_id=log_id,
             )
             logger.info(f"Email task enqueued for {to}: {subject}")
         except Exception as e:
@@ -91,17 +98,41 @@ class EmailService:
             )
 
     @staticmethod
-    def send_welcome_email(to: str, user_name: str) -> None:
+    def send_welcome_email(
+        to: str,
+        user_name: str,
+        user_id: int | None = None,
+    ) -> None:
         """
         Send a welcome email to a newly registered user.
 
         Renders the welcome.html template with the user's name and
         enqueues the email task to Celery.
 
+        If user_id is provided:
+        - Checks idempotency (skips if welcome email sent within 24h)
+        - Creates an email_logs record (status: queued)
+        - Passes log_id to Celery task for status tracking
+
         Args:
             to: Recipient email address
             user_name: User's display name for personalization
+            user_id: Optional user ID for logging and idempotency
         """
+        # Idempotency check: skip if welcome email sent within 24h
+        if user_id is not None:
+            from app.core.database import SyncSessionLocal
+            from app.models.email_log import EmailLog
+
+            with SyncSessionLocal() as session:
+                if EmailLog.check_idempotency(session, user_id, "welcome", hours=24):
+                    logger.info(
+                        f"Skipping welcome email for user {user_id}: "
+                        f"already sent within 24h"
+                    )
+                    return
+
+        # Render template
         try:
             template = _email_env.get_template("welcome.html")
             html_body = template.render(
@@ -113,8 +144,33 @@ class EmailService:
             # Fallback to plain text if template rendering fails
             html_body = f"<p>Hola {user_name}, bienvenido a Mi App Instagram!</p>"
 
+        # Create email log if user_id is provided
+        log_id = None
+        if user_id is not None:
+            from app.core.database import SyncSessionLocal
+            from app.models.email_log import EmailLog, EmailStatus
+
+            try:
+                with SyncSessionLocal() as session:
+                    log_entry = EmailLog(
+                        user_id=user_id,
+                        email_type="welcome",
+                        to_email=to,
+                        from_email=settings.MAIL_FROM_ADDRESS,
+                        status=EmailStatus.QUEUED,
+                        template_name="welcome",
+                        metadata_={"user_name": user_name},
+                    )
+                    session.add(log_entry)
+                    session.commit()
+                    log_id = log_entry.id
+                    logger.info(f"Email log created: id={log_id} for {to}")
+            except Exception as e:
+                logger.warning(f"Failed to create email log: {e}. Continuing without logging.")
+
         EmailService.send_transactional_email(
             to=to,
             subject="¡Bienvenido a Mi App Instagram!",
             html_body=html_body,
+            log_id=log_id,
         )

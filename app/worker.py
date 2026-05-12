@@ -256,6 +256,48 @@ def process_instagram_post(self, post_id: int) -> str:
 # Email Tasks (Resend)
 # ============================================================
 
+def _update_email_log_success(log_id: int, message_id: str) -> None:
+    """Update email log status to 'sent' after successful send."""
+    from app.models.email_log import EmailLog
+    from datetime import datetime, timezone
+
+    with SyncSessionLocal() as session:
+        log_entry = session.get(EmailLog, log_id)
+        if log_entry:
+            log_entry.status = "sent"
+            log_entry.message_id = message_id
+            log_entry.sent_at = datetime.now(timezone.utc)
+            session.commit()
+            logger.info(f"Email log {log_id} updated to 'sent'")
+
+
+def _update_email_log_failure(log_id: int, error: str, retry_count: int = 0) -> None:
+    """Update email log status to 'failed' after final failure."""
+    from app.models.email_log import EmailLog
+    from datetime import datetime, timezone
+
+    with SyncSessionLocal() as session:
+        log_entry = session.get(EmailLog, log_id)
+        if log_entry:
+            log_entry.status = "failed"
+            log_entry.error_message = error
+            log_entry.failed_at = datetime.now(timezone.utc)
+            log_entry.retry_count = retry_count
+            session.commit()
+            logger.info(f"Email log {log_id} updated to 'failed'")
+
+
+def _update_email_log_retry(log_id: int, retry_count: int) -> None:
+    """Update retry count on email log during retry attempts."""
+    from app.models.email_log import EmailLog
+
+    with SyncSessionLocal() as session:
+        log_entry = session.get(EmailLog, log_id)
+        if log_entry:
+            log_entry.retry_count = retry_count
+            session.commit()
+
+
 @celery_app.task(
     bind=True,
     max_retries=3,
@@ -271,6 +313,7 @@ def task_dispatch_resend_email(
     html_body: str,
     from_email: str | None = None,
     from_name: str | None = None,
+    log_id: int | None = None,
 ) -> dict:
     """
     Celery task to send an email via Resend API.
@@ -284,6 +327,7 @@ def task_dispatch_resend_email(
         html_body: HTML content of the email
         from_email: Sender email (defaults to MAIL_FROM_ADDRESS config)
         from_name: Sender name (defaults to MAIL_FROM_NAME config)
+        log_id: Optional email_logs ID for status tracking
 
     Returns:
         dict with 'message_id' on success
@@ -310,19 +354,39 @@ def task_dispatch_resend_email(
         logger.info(
             f"Email sent successfully to {to}: message_id={message_id}"
         )
+
+        # Update log status on success
+        if log_id:
+            _update_email_log_success(log_id, message_id)
+
         return {"message_id": message_id, "to": to, "status": "sent"}
     except Exception as e:
         # Check if it's a 4xx client error — don't retry
         status_code = getattr(e, "code", None)
+        retry_count = self.request.retries
+
         if status_code and 400 <= status_code < 500:
             logger.error(
                 f"Email failed (client error {status_code}) for {to}: {e}"
             )
+            # Update log status on client error (no retry)
+            if log_id:
+                _update_email_log_failure(log_id, str(e), retry_count)
             # Don't retry client errors
             return {"error": str(e), "to": to, "status": "failed", "status_code": status_code}
 
-        # For 5xx or network errors, let Celery retry
+        # For 5xx or network errors, update retry count and let Celery retry
         logger.warning(
-            f"Email failed for {to} (will retry): {e}"
+            f"Email failed for {to} (will retry, attempt {retry_count + 1}/3): {e}"
         )
+
+        # Update retry count in log
+        if log_id:
+            _update_email_log_retry(log_id, retry_count)
+
+        # Check if this is the last retry
+        if retry_count >= 3:
+            if log_id:
+                _update_email_log_failure(log_id, str(e), retry_count)
+
         raise

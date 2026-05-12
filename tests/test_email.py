@@ -43,6 +43,7 @@ class TestEmailServiceTransactional:
             html_body="<h1>Hello</h1>",
             from_email=None,
             from_name=None,
+            log_id=None,
         )
 
     @patch("app.worker.task_dispatch_resend_email")
@@ -66,6 +67,7 @@ class TestEmailServiceTransactional:
             html_body="<p>Body</p>",
             from_email="custom@example.com",
             from_name="My App",
+            log_id=None,
         )
 
     @patch("app.worker.task_dispatch_resend_email")
@@ -256,7 +258,13 @@ class TestRegisterWithEmailIntegration:
         mock_session = MagicMock()
         mock_session.execute = AsyncMock(return_value=mock_result)
         mock_session.commit = AsyncMock()
-        mock_session.refresh = AsyncMock()
+
+        # Mock refresh to set ID on the real User object created by the route
+        async def mock_refresh(obj):
+            obj.id = 1
+            obj.email = "testuser@example.com"
+
+        mock_session.refresh = mock_refresh
 
         async def fake_get_db():
             yield mock_session
@@ -276,8 +284,9 @@ class TestRegisterWithEmailIntegration:
             # Should return success
             assert response.status_code in (200, 303, 307)
 
-        # Welcome email should have been called
-        mock_welcome.assert_called_once_with(
-            to="testuser@example.com",
-            user_name="testuser",
-        )
+        # Welcome email should have been called with user_id
+        mock_welcome.assert_called_once()
+        call_kwargs = mock_welcome.call_args[1]
+        assert call_kwargs["to"] == "testuser@example.com"
+        assert call_kwargs["user_name"] == "testuser"
+        assert call_kwargs["user_id"] == 1
