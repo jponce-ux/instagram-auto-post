@@ -290,3 +290,343 @@ class TestRegisterWithEmailIntegration:
         assert call_kwargs["to"] == "testuser@example.com"
         assert call_kwargs["user_name"] == "testuser"
         assert call_kwargs["user_id"] == 1
+
+
+# ============================================================
+# SPEC-018: Email History Tracking Tests
+# ============================================================
+
+class TestEmailLogModel:
+    """Test EmailLog model query methods (T5.1)"""
+
+    def test_get_by_user_returns_user_logs(self):
+        """GIVEN email logs exist for multiple users
+        WHEN get_by_user is called for a specific user
+        THEN only that user's logs are returned, ordered by queued_at desc"""
+        from app.models.email_log import EmailLog, EmailStatus
+        from unittest.mock import MagicMock
+        from sqlalchemy import select
+
+        mock_session = MagicMock()
+        log1 = MagicMock(spec=EmailLog)
+        log1.user_id = 1
+        log2 = MagicMock(spec=EmailLog)
+        log2.user_id = 1
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = [log1, log2]
+        mock_result = MagicMock()
+        mock_result.scalars.return_value = mock_scalars
+        mock_session.execute.return_value = mock_result
+
+        results = EmailLog.get_by_user(mock_session, user_id=1)
+
+        assert len(results) == 2
+        # Verify the query was executed
+        mock_session.execute.assert_called_once()
+
+    def test_get_by_status_filters_correctly(self):
+        """GIVEN email logs exist with various statuses
+        WHEN get_by_status is called
+        THEN only logs matching the status are returned"""
+        from app.models.email_log import EmailLog, EmailStatus
+        from unittest.mock import MagicMock
+
+        mock_session = MagicMock()
+        log1 = MagicMock(spec=EmailLog)
+        log1.status = EmailStatus.QUEUED
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = [log1]
+        mock_result = MagicMock()
+        mock_result.scalars.return_value = mock_scalars
+        mock_session.execute.return_value = mock_result
+
+        results = EmailLog.get_by_status(mock_session, status=EmailStatus.QUEUED)
+
+        assert len(results) == 1
+        assert results[0].status == EmailStatus.QUEUED
+        mock_session.execute.assert_called_once()
+
+    def test_check_idempotency_returns_true_for_recent_sent(self):
+        """GIVEN a welcome email was sent within 24 hours
+        WHEN check_idempotency is called
+        THEN it returns True"""
+        from app.models.email_log import EmailLog
+        from unittest.mock import MagicMock
+
+        mock_session = MagicMock()
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = MagicMock()  # Found a recent log
+        mock_session.execute.return_value = mock_result
+
+        result = EmailLog.check_idempotency(mock_session, user_id=1, email_type="welcome", hours=24)
+
+        assert result is True
+        mock_session.execute.assert_called_once()
+
+    def test_check_idempotency_returns_false_for_old_email(self):
+        """GIVEN a welcome email was sent more than 24 hours ago
+        WHEN check_idempotency is called with 24h window
+        THEN it returns False"""
+        from app.models.email_log import EmailLog
+        from unittest.mock import MagicMock
+
+        mock_session = MagicMock()
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None  # No recent log found
+        mock_session.execute.return_value = mock_result
+
+        result = EmailLog.check_idempotency(mock_session, user_id=1, email_type="welcome", hours=24)
+
+        assert result is False
+
+    def test_check_idempotency_returns_false_for_failed_email(self):
+        """GIVEN a welcome email failed (status=failed)
+        WHEN check_idempotency is called
+        THEN it returns False (failed emails don't block retries)"""
+        from app.models.email_log import EmailLog
+        from unittest.mock import MagicMock
+
+        mock_session = MagicMock()
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None  # No SENT log found
+        mock_session.execute.return_value = mock_result
+
+        result = EmailLog.check_idempotency(mock_session, user_id=1, email_type="welcome", hours=24)
+
+        assert result is False
+
+
+class TestEmailLogCeleryTaskUpdates:
+    """Test Celery task updates email log status (T5.3)"""
+
+    @patch("app.worker._update_email_log_success")
+    @patch("resend.Emails.send")
+    def test_task_updates_log_to_sent_on_success(self, mock_send, mock_update):
+        """GIVEN an email log exists with status=queued
+        WHEN task_dispatch_resend_email succeeds
+        THEN _update_email_log_success is called with log_id and message_id"""
+        from app.worker import task_dispatch_resend_email
+
+        mock_response = Mock()
+        mock_response.id = "msg_test123"
+        mock_send.return_value = mock_response
+
+        result = task_dispatch_resend_email.run(
+            to="task_test@example.com",
+            subject="Test",
+            html_body="<p>Test</p>",
+            log_id=42,
+        )
+
+        assert result["status"] == "sent"
+        assert result["message_id"] == "msg_test123"
+        mock_update.assert_called_once_with(42, "msg_test123")
+
+    @patch("app.worker._update_email_log_failure")
+    @patch("resend.Emails.send")
+    def test_task_updates_log_to_failed_on_4xx(self, mock_send, mock_update):
+        """GIVEN an email log exists with status=queued
+        WHEN task_dispatch_resend_email gets a 4xx error
+        THEN _update_email_log_failure is called"""
+        from resend.exceptions import ResendError
+        from app.worker import task_dispatch_resend_email
+
+        error = ResendError(
+            code=400,
+            error_type="invalid_request",
+            message="Bad request",
+            suggested_action="Check parameters",
+        )
+        mock_send.side_effect = error
+
+        result = task_dispatch_resend_email.run(
+            to="task_fail@example.com",
+            subject="Test",
+            html_body="<p>Test</p>",
+            log_id=42,
+        )
+
+        assert result["status"] == "failed"
+        mock_update.assert_called_once()
+        call_args = mock_update.call_args[0]
+        assert call_args[0] == 42  # log_id
+
+    @patch("app.worker._update_email_log_retry")
+    @patch("resend.Emails.send")
+    def test_task_updates_retry_count_on_5xx(self, mock_send, mock_update):
+        """GIVEN an email log exists with status=queued
+        WHEN task_dispatch_resend_email gets a 5xx error
+        THEN _update_email_log_retry is called"""
+        from resend.exceptions import ResendError
+        from app.worker import task_dispatch_resend_email
+
+        error = ResendError(
+            code=500,
+            error_type="internal_error",
+            message="Internal server error",
+            suggested_action="Try again later",
+        )
+        mock_send.side_effect = error
+
+        with pytest.raises(ResendError):
+            task_dispatch_resend_email.run(
+                to="task_retry@example.com",
+                subject="Test",
+                html_body="<p>Test</p>",
+                log_id=42,
+            )
+
+        mock_update.assert_called_once()
+        call_args = mock_update.call_args[0]
+        assert call_args[0] == 42  # log_id
+
+    def test_task_works_without_log_id(self):
+        """GIVEN task is called without log_id
+        WHEN task runs successfully
+        THEN it completes without errors (backward compatibility)"""
+        from app.worker import task_dispatch_resend_email
+
+        with patch("resend.Emails.send") as mock_send:
+            mock_response = Mock()
+            mock_response.id = "msg_nolog"
+            mock_send.return_value = mock_response
+
+            result = task_dispatch_resend_email.run(
+                to="user@example.com",
+                subject="Test",
+                html_body="<p>Test</p>",
+                log_id=None,
+            )
+
+            assert result["status"] == "sent"
+            assert result["message_id"] == "msg_nolog"
+
+
+class TestEmailServiceIdempotency:
+    """Test idempotency in EmailService (T5.4)"""
+
+    @patch("app.services.email.EmailService.send_transactional_email")
+    @patch("app.core.database.SyncSessionLocal")
+    def test_skips_email_if_recently_sent(self, mock_session_factory, mock_send):
+        """GIVEN a welcome email was sent within 24 hours
+        WHEN send_welcome_email is called again
+        THEN the email is NOT sent (idempotency check blocks it)"""
+        from app.services.email import EmailService
+        from app.models.email_log import EmailLog
+
+        # Mock the session to return idempotency=True
+        mock_session = MagicMock()
+        mock_session.__enter__ = MagicMock(return_value=mock_session)
+        mock_session.__exit__ = MagicMock(return_value=False)
+        mock_session_factory.return_value = mock_session
+
+        with patch.object(EmailLog, 'check_idempotency', return_value=True):
+            EmailService.send_welcome_email(
+                to="user@example.com",
+                user_name="testuser",
+                user_id=1,
+            )
+
+            # Should NOT have called send_transactional_email
+            mock_send.assert_not_called()
+
+    @patch("app.services.email.EmailService.send_transactional_email")
+    @patch("app.core.database.SyncSessionLocal")
+    def test_sends_email_if_not_recently_sent(self, mock_session_factory, mock_send):
+        """GIVEN no welcome email was sent in the last 24 hours
+        WHEN send_welcome_email is called
+        THEN the email IS sent"""
+        from app.services.email import EmailService
+        from app.models.email_log import EmailLog
+
+        # Mock the session
+        mock_session = MagicMock()
+        mock_session.__enter__ = MagicMock(return_value=mock_session)
+        mock_session.__exit__ = MagicMock(return_value=False)
+        mock_session_factory.return_value = mock_session
+
+        with patch.object(EmailLog, 'check_idempotency', return_value=False):
+            EmailService.send_welcome_email(
+                to="user@example.com",
+                user_name="testuser",
+                user_id=1,
+            )
+
+            # Should have called send_transactional_email
+            mock_send.assert_called_once()
+
+
+class TestEmailLogIntegration:
+    """Integration test: log creation during registration (T5.2)"""
+
+    @patch("app.services.email.EmailService.send_transactional_email")
+    @patch("app.models.email_log.EmailLog.check_idempotency", return_value=False)
+    @patch("app.core.database.SyncSessionLocal")
+    def test_registration_creates_email_log(self, mock_sync_session, mock_idem, mock_send):
+        """GIVEN a user registers successfully
+        WHEN POST /auth/register is called
+        THEN EmailService.send_welcome_email is called with user_id"""
+        from fastapi.testclient import TestClient
+        from app.main import app
+        from unittest.mock import patch, AsyncMock, MagicMock
+        from app.core.database import get_db
+        from app.models.user import User
+
+        # Mock sync session for email logging - simulate ID assignment on commit
+        mock_sync_sess = MagicMock()
+        mock_sync_sess.__enter__ = MagicMock(return_value=mock_sync_sess)
+        mock_sync_sess.__exit__ = MagicMock(return_value=False)
+
+        def mock_commit():
+            pass  # Simulate commit
+
+        mock_sync_sess.commit = mock_commit
+        mock_sync_session.return_value = mock_sync_sess
+
+        # Create mock objects for async DB
+        mock_user = MagicMock(spec=User)
+        mock_user.id = 1
+        mock_user.email = "logtest@example.com"
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none = MagicMock(side_effect=[None, mock_user])
+        mock_session = MagicMock()
+        mock_session.execute = AsyncMock(return_value=mock_result)
+        mock_session.commit = AsyncMock()
+
+        async def mock_refresh(obj):
+            obj.id = 1
+            obj.email = "logtest@example.com"
+
+        mock_session.refresh = mock_refresh
+
+        async def fake_get_db():
+            yield mock_session
+
+        with patch.object(app, 'dependency_overrides', {get_db: fake_get_db}):
+            # Patch EmailLog to assign an ID on init
+            from app.models.email_log import EmailLog
+            original_init = EmailLog.__init__
+
+            def patched_init(self, *args, **kwargs):
+                original_init(self, *args, **kwargs)
+                self.id = 99  # Simulate DB-assigned ID
+
+            with patch.object(EmailLog, '__init__', patched_init):
+                client = TestClient(app)
+
+                response = client.post(
+                    "/auth/register",
+                    data={
+                        "email": "logtest@example.com",
+                        "password": "testpassword123",
+                        "password_confirm": "testpassword123",
+                    },
+                )
+
+                assert response.status_code in (200, 303, 307)
+
+        # Verify email was sent with user_id (which triggers log creation)
+        mock_send.assert_called_once()
+        call_kwargs = mock_send.call_args[1]
+        assert call_kwargs["log_id"] is not None
+        assert call_kwargs["log_id"] == 99
