@@ -237,26 +237,23 @@ class TestRegisterWithEmailIntegration:
     """Test that registration triggers welcome email"""
 
     @patch("app.services.email.EmailService.send_welcome_email")
-    @patch("app.core.database.get_db")
-    def test_register_calls_welcome_email(self, mock_get_db, mock_welcome):
-        """GIVEN a user registers successfully
+    def test_register_calls_welcome_email(self, mock_welcome):
+        """GIVEN a user registers successfully (DB mocked)
         WHEN POST /auth/register is called
         THEN EmailService.send_welcome_email is called"""
         from fastapi.testclient import TestClient
         from app.main import app
-        from unittest.mock import AsyncMock, MagicMock
-        from app.models.user import User
+        from unittest.mock import patch, AsyncMock, MagicMock
         from app.core.database import get_db
+        from app.models.user import User
 
-        # Create a mock user that will be "created"
+        # Create mock objects
         mock_user = MagicMock(spec=User)
         mock_user.id = 1
         mock_user.email = "testuser@example.com"
-
-        # Mock the database session with async methods
-        mock_session = MagicMock()
         mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = None
+        mock_result.scalar_one_or_none = MagicMock(side_effect=[None, mock_user])
+        mock_session = MagicMock()
         mock_session.execute = AsyncMock(return_value=mock_result)
         mock_session.commit = AsyncMock()
         mock_session.refresh = AsyncMock()
@@ -264,10 +261,7 @@ class TestRegisterWithEmailIntegration:
         async def fake_get_db():
             yield mock_session
 
-        # Use dependency override
-        app.dependency_overrides[get_db] = fake_get_db
-
-        try:
+        with patch.object(app, 'dependency_overrides', {get_db: fake_get_db}):
             client = TestClient(app)
 
             response = client.post(
@@ -279,13 +273,11 @@ class TestRegisterWithEmailIntegration:
                 },
             )
 
-            # Should return success (200 or redirect depending on mock behavior)
+            # Should return success
             assert response.status_code in (200, 303, 307)
 
-            # Welcome email should have been called
-            mock_welcome.assert_called_once_with(
-                to="testuser@example.com",
-                user_name="testuser",
-            )
-        finally:
-            app.dependency_overrides.clear()
+        # Welcome email should have been called
+        mock_welcome.assert_called_once_with(
+            to="testuser@example.com",
+            user_name="testuser",
+        )
