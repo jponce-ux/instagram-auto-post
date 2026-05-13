@@ -147,7 +147,8 @@ class TestOAuthConnectionFlow:
         # The OAuth endpoint is in app/auth/instagram.py
         response = client.get("/auth/instagram/login", follow_redirects=False)
         assert response.status_code == 307  # Redirect
-        assert "facebook.com" in response.headers.get("location", "")
+        location = response.headers.get("location", "")
+        assert "instagram.com" in location or "facebook.com" in location
 
 
 # Test: Post Creation Form

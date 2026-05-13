@@ -6,6 +6,8 @@ class Settings(BaseSettings):
     SECRET_KEY: str
     DEBUG: bool = False
     META_APP_ID: str = ""
+    META_LOGIN_URL: str = ""
+    META_REDIRECT_URI: str = ""
     META_APP_SECRET: str = ""
     BASE_URL: str = "http://localhost:8000"
 

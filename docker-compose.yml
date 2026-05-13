@@ -60,6 +60,14 @@ services:
       MINIO_TUNNEL_HOST: ${MINIO_TUNNEL_HOST:-}
       MINIO_SSE_ENABLED: ${MINIO_SSE_ENABLED:-false}
       CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/0}
+      META_APP_ID: ${META_APP_ID:-}
+      META_APP_SECRET: ${META_APP_SECRET:-}
+      META_LOGIN_URL: ${META_LOGIN_URL:-}
+      META_REDIRECT_URI: ${META_REDIRECT_URI:-}
+      META_WEBHOOK_VERIFY_TOKEN: ${META_WEBHOOK_VERIFY_TOKEN:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      MAIL_FROM_ADDRESS: ${MAIL_FROM_ADDRESS:-onboarding@resend.dev}
+      MAIL_FROM_NAME: ${MAIL_FROM_NAME:-Mi App Instagram}
     ports:
       - "8000:8000"
     healthcheck:
@@ -88,6 +96,11 @@ services:
       MINIO_BUCKET_NAME: ${MINIO_BUCKET_NAME}
       MINIO_TUNNEL_HOST: ${MINIO_TUNNEL_HOST:-}
       CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/0}
+      META_APP_ID: ${META_APP_ID:-}
+      META_APP_SECRET: ${META_APP_SECRET:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      MAIL_FROM_ADDRESS: ${MAIL_FROM_ADDRESS:-onboarding@resend.dev}
+      MAIL_FROM_NAME: ${MAIL_FROM_NAME:-Mi App Instagram}
     depends_on:
       db:
         condition: service_healthy

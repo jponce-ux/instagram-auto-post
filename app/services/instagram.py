@@ -2,15 +2,17 @@ import httpx
 from app.core.config import settings
 
 META_API_BASE = "https://graph.facebook.com/v18.0"
+INSTAGRAM_OAUTH_BASE = "https://api.instagram.com/oauth"
 
 
 async def exchange_short_token(code: str, redirect_uri: str) -> dict:
     async with httpx.AsyncClient() as client:
-        response = await client.get(
-            f"{META_API_BASE}/oauth/access_token",
-            params={
+        response = await client.post(
+            f"{INSTAGRAM_OAUTH_BASE}/access_token",
+            data={
                 "client_id": settings.META_APP_ID,
                 "client_secret": settings.META_APP_SECRET,
+                "grant_type": "authorization_code",
                 "redirect_uri": redirect_uri,
                 "code": code,
             },
@@ -22,27 +24,41 @@ async def exchange_short_token(code: str, redirect_uri: str) -> dict:
 async def get_long_lived_token(short_token: str) -> dict:
     async with httpx.AsyncClient() as client:
         response = await client.get(
-            f"{META_API_BASE}/oauth/access_token",
+            "https://graph.instagram.com/access_token",
             params={
-                "grant_type": "fb_exchange_token",
-                "client_id": settings.META_APP_ID,
+                "grant_type": "ig_exchange_token",
                 "client_secret": settings.META_APP_SECRET,
-                "fb_exchange_token": short_token,
+                "access_token": short_token,
             },
         )
         response.raise_for_status()
         return response.json()
 
 
-async def get_instagram_account_id(access_token: str) -> str:
+async def get_instagram_account_id(access_token: str) -> tuple[str, str]:
+    """Get the Instagram Business Account ID and username using the IG access token.
+
+    Returns:
+        tuple of (instagram_user_id, username)
+    """
     async with httpx.AsyncClient() as client:
         response = await client.get(
-            f"{META_API_BASE}/me/accounts",
-            params={"access_token": access_token},
+            "https://graph.instagram.com/v25.0/me",
+            params={
+                "fields": "user_id,username",
+                "access_token": access_token,
+            },
         )
         response.raise_for_status()
         data = response.json()
-        return data.get("data", [{}])[0].get("id", "")
+
+        ig_user_id = data.get("user_id") or data.get("id", "")
+        username = data.get("username", "")
+
+        if not ig_user_id:
+            raise ValueError(f"Could not get Instagram user ID from /me endpoint: {data}")
+
+        return str(ig_user_id), username
 
 
 async def create_media_container(
