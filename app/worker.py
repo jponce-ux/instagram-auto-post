@@ -141,8 +141,10 @@ def _process_post_sync(post_id: int) -> None:
     5. Create media container via Meta API
     6. Poll container status until FINISHED (max 30s)
     7. Publish media container
-    8. Update Post status -> PUBLISHED
-    9. Delete file from public bucket (cleanup)
+    8. Update Post status -> PUBLISHED (awaiting webhook confirmation)
+
+    Public bucket cleanup is NOT done here — the webhook handler deletes the
+    public copy once Instagram confirms the image is live on the feed.
 
     On error: Update Post status -> FAILED, store error_message, cleanup public bucket
     """
@@ -233,14 +235,13 @@ def _process_post_sync(post_id: int) -> None:
                 raise Exception(f"Failed to publish media: {error_msg}")
 
             # Step 8: Update status to PUBLISHED
+            # Note: Do NOT delete from public bucket here. Instagram still needs
+            # to download the image. Cleanup happens when the webhook confirms
+            # the post is live on the feed (see webhooks/meta.py).
             post.status = PostStatus.PUBLISHED
             post.published_at = func.now()
             db.commit()
             _publish_post_event(post.id, "published", post.user_id)
-
-            # Step 9: Delete from public bucket (cleanup — private copy remains)
-            asyncio.run(storage_service.delete_from_public_bucket(media_file.key))
-            logger.info(f"Deleted {media_file.key} from public bucket after publish")
 
         except Exception as e:
             # Error handling: Update status to FAILED

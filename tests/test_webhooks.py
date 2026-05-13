@@ -27,6 +27,7 @@ from app.main import app
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.post import Post, PostStatus
+from app.models.media_file import MediaFile
 
 
 # Test Client (created once for all tests)
@@ -326,7 +327,7 @@ class TestProcessWebhookChangeUnit:
 
         GIVEN webhook contains ig_container_id that matches a Post
         WHEN Post with matching ig_container_id exists
-        THEN Post is updated with new status PUBLISHED"""
+        THEN Post is updated with new status PUBLISHED and public bucket is cleaned up"""
         from app.webhooks.meta import _process_webhook_change
         from app.webhooks.schemas import WebhookValue
 
@@ -335,10 +336,14 @@ class TestProcessWebhookChangeUnit:
         mock_post.id = 1
         mock_post.status = PostStatus.PROCESSING
 
-        # Setup mock database
+        # Setup mock media file
+        mock_media_file = Mock(spec=MediaFile)
+        mock_media_file.key = "1/abc123.jpg"
+
+        # Setup mock database — join returns (Post, MediaFile) row
         mock_db = AsyncMock(spec=AsyncSession)
         mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = mock_post
+        mock_result.first.return_value = (mock_post, mock_media_file)
         mock_db.execute.return_value = mock_result
 
         # Create webhook value
@@ -346,12 +351,14 @@ class TestProcessWebhookChangeUnit:
             media_id="media_123", container_id="container_123", status="PUBLISHED"
         )
 
-        result = await _process_webhook_change(value, mock_db)
+        with patch("app.webhooks.meta.storage_service") as mock_storage:
+            result = await _process_webhook_change(value, mock_db)
 
         assert result == mock_post
         assert mock_post.status == PostStatus.PUBLISHED
         assert mock_post.ig_media_id == "media_123"
         mock_db.commit.assert_called_once()
+        mock_storage.delete_from_public_bucket.assert_called_once_with("1/abc123.jpg")
 
     @pytest.mark.asyncio
     async def test_post_found_by_media_id_fallback(self):
@@ -359,7 +366,7 @@ class TestProcessWebhookChangeUnit:
 
         GIVEN webhook contains ig_media_id without container_id
         WHEN Post matches by media_id
-        THEN Post is updated with new status"""
+        THEN Post is updated with new status and public bucket is cleaned up"""
         from app.webhooks.meta import _process_webhook_change
         from app.webhooks.schemas import WebhookValue
 
@@ -368,24 +375,25 @@ class TestProcessWebhookChangeUnit:
         mock_post.id = 2
         mock_post.status = PostStatus.PROCESSING
 
-        # Setup mock database - use AsyncMock for async methods
-        mock_db = AsyncMock(spec=AsyncSession)
+        # Setup mock media file
+        mock_media_file = Mock(spec=MediaFile)
+        mock_media_file.key = "2/def456.jpg"
 
-        # Since container_id is None, only the media_id lookup will be executed
-        # The result should return the mock_post
-        result = MagicMock()
-        result.scalar_one_or_none.return_value = mock_post
-        mock_db.execute.return_value = result
+        # Setup mock database — join returns (Post, MediaFile) row
+        mock_db = AsyncMock(spec=AsyncSession)
+        mock_result = MagicMock()
+        mock_result.first.return_value = (mock_post, mock_media_file)
+        mock_db.execute.return_value = mock_result
 
         # Create webhook value without container_id (only media_id)
         value = WebhookValue(media_id="media_456", status="PUBLISHED")
 
-        result = await _process_webhook_change(value, mock_db)
+        with patch("app.webhooks.meta.storage_service") as mock_storage:
+            result = await _process_webhook_change(value, mock_db)
 
         assert result == mock_post
         assert mock_post.status == PostStatus.PUBLISHED
-        # Only ONE query should be made (media_id lookup), since container_id is None
-        assert mock_db.execute.call_count == 1
+        mock_storage.delete_from_public_bucket.assert_called_once_with("2/def456.jpg")
 
     @pytest.mark.asyncio
     async def test_post_not_found_returns_none_and_logs(self):
@@ -396,10 +404,10 @@ class TestProcessWebhookChangeUnit:
         from app.webhooks.meta import _process_webhook_change
         from app.webhooks.schemas import WebhookValue
 
-        # Setup mock database - returns None for both lookups
+        # Setup mock database — returns None for both lookups
         mock_db = AsyncMock(spec=AsyncSession)
         mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = None
+        mock_result.first.return_value = None
         mock_db.execute.return_value = mock_result
 
         # Create webhook value
@@ -417,11 +425,11 @@ class TestProcessWebhookChangeUnit:
 
     @pytest.mark.asyncio
     async def test_error_status_updates_to_failed(self):
-        """Test: Webhook with ERROR status → Post marked as FAILED
+        """Test: Webhook with ERROR status → Post marked as FAILED and public bucket cleaned up
 
         GIVEN Meta sends POST with entry containing status=ERROR
         WHEN payload is validated and parsed
-        THEN Post status is updated to FAILED AND error_message is stored"""
+        THEN Post status is updated to FAILED, error_message is stored, public bucket is cleaned up"""
         from app.webhooks.meta import _process_webhook_change
         from app.webhooks.schemas import WebhookValue
 
@@ -430,10 +438,14 @@ class TestProcessWebhookChangeUnit:
         mock_post.id = 3
         mock_post.status = PostStatus.PROCESSING
 
-        # Setup mock database
+        # Setup mock media file
+        mock_media_file = Mock(spec=MediaFile)
+        mock_media_file.key = "3/error_file.jpg"
+
+        # Setup mock database — join returns (Post, MediaFile) row
         mock_db = AsyncMock(spec=AsyncSession)
         mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = mock_post
+        mock_result.first.return_value = (mock_post, mock_media_file)
         mock_db.execute.return_value = mock_result
 
         # Create webhook value with ERROR status
@@ -443,20 +455,22 @@ class TestProcessWebhookChangeUnit:
             error_message="Media upload failed: invalid format",
         )
 
-        result = await _process_webhook_change(value, mock_db)
+        with patch("app.webhooks.meta.storage_service") as mock_storage:
+            result = await _process_webhook_change(value, mock_db)
 
         assert result == mock_post
         assert mock_post.status == PostStatus.FAILED
         assert mock_post.error_message == "Media upload failed: invalid format"
         mock_db.commit.assert_called_once()
+        mock_storage.delete_from_public_bucket.assert_called_once_with("3/error_file.jpg")
 
     @pytest.mark.asyncio
     async def test_idempotent_published_webhook_skips_update(self):
-        """Test: Post already PUBLISHED → webhook skips update (idempotent)
+        """Test: Post already PUBLISHED → webhook skips update but still cleans up public bucket
 
         GIVEN a Post that is already PUBLISHED
         WHEN webhook with status=PUBLISHED is received
-        THEN no update is made and no commit is called"""
+        THEN no commit is made but public bucket cleanup still runs"""
         from app.webhooks.meta import _process_webhook_change
         from app.webhooks.schemas import WebhookValue
 
@@ -465,10 +479,14 @@ class TestProcessWebhookChangeUnit:
         mock_post.id = 10
         mock_post.status = PostStatus.PUBLISHED
 
-        # Setup mock database
+        # Setup mock media file
+        mock_media_file = Mock(spec=MediaFile)
+        mock_media_file.key = "10/already_published.jpg"
+
+        # Setup mock database — join returns (Post, MediaFile) row
         mock_db = AsyncMock(spec=AsyncSession)
         mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = mock_post
+        mock_result.first.return_value = (mock_post, mock_media_file)
         mock_db.execute.return_value = mock_result
 
         # Create webhook value with PUBLISHED status
@@ -478,24 +496,27 @@ class TestProcessWebhookChangeUnit:
             media_id="media_999",
         )
 
-        with patch("app.webhooks.meta.logger") as mock_logger:
+        with patch("app.webhooks.meta.logger") as mock_logger, \
+             patch("app.webhooks.meta.storage_service") as mock_storage:
             result = await _process_webhook_change(value, mock_db)
 
         assert result == mock_post
         assert mock_post.status == PostStatus.PUBLISHED
         # Idempotency: commit should NOT be called since state didn't change
         mock_db.commit.assert_not_called()
+        # Still clean up public bucket even on idempotent webhook
+        mock_storage.delete_from_public_bucket.assert_called_once_with("10/already_published.jpg")
         # Should log idempotent skip
         mock_logger.info.assert_called()
         assert "already PUBLISHED" in mock_logger.info.call_args[0][0]
 
     @pytest.mark.asyncio
     async def test_idempotent_failed_webhook_skips_update(self):
-        """Test: Post already FAILED → webhook skips update (idempotent)
+        """Test: Post already FAILED → webhook skips update but still cleans up public bucket
 
         GIVEN a Post that is already FAILED
         WHEN webhook with status=ERROR is received
-        THEN no update is made and no commit is called"""
+        THEN no update is made, no commit is called, but public bucket cleanup still runs"""
         from app.webhooks.meta import _process_webhook_change
         from app.webhooks.schemas import WebhookValue
 
@@ -505,10 +526,14 @@ class TestProcessWebhookChangeUnit:
         mock_post.status = PostStatus.FAILED
         mock_post.error_message = "Previous error"
 
-        # Setup mock database
+        # Setup mock media file
+        mock_media_file = Mock(spec=MediaFile)
+        mock_media_file.key = "11/already_failed.jpg"
+
+        # Setup mock database — join returns (Post, MediaFile) row
         mock_db = AsyncMock(spec=AsyncSession)
         mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = mock_post
+        mock_result.first.return_value = (mock_post, mock_media_file)
         mock_db.execute.return_value = mock_result
 
         # Create webhook value with ERROR status
@@ -518,7 +543,8 @@ class TestProcessWebhookChangeUnit:
             error_message="New error message",
         )
 
-        with patch("app.webhooks.meta.logger") as mock_logger:
+        with patch("app.webhooks.meta.logger") as mock_logger, \
+             patch("app.webhooks.meta.storage_service") as mock_storage:
             result = await _process_webhook_change(value, mock_db)
 
         assert result == mock_post
@@ -527,6 +553,8 @@ class TestProcessWebhookChangeUnit:
         assert mock_post.error_message == "Previous error"
         # Idempotency: commit should NOT be called since state didn't change
         mock_db.commit.assert_not_called()
+        # Still clean up public bucket even on idempotent webhook
+        mock_storage.delete_from_public_bucket.assert_called_once_with("11/already_failed.jpg")
         # Should log idempotent skip
         mock_logger.info.assert_called()
         assert "already FAILED" in mock_logger.info.call_args[0][0]
@@ -537,7 +565,7 @@ class TestProcessWebhookChangeUnit:
 
         GIVEN a Post in PROCESSING state receives PUBLISHED webhook twice
         WHEN both webhooks are processed
-        THEN first webhook updates, second skips (replay protection via idempotency)"""
+        THEN first webhook updates and cleans up, second skips commit but still cleans up"""
         from app.webhooks.meta import _process_webhook_change
         from app.webhooks.schemas import WebhookValue
 
@@ -546,36 +574,46 @@ class TestProcessWebhookChangeUnit:
         mock_post_first.id = 20
         mock_post_first.status = PostStatus.PROCESSING
 
+        mock_media_file_first = Mock(spec=MediaFile)
+        mock_media_file_first.key = "20/first_call.jpg"
+
         mock_db_first = AsyncMock(spec=AsyncSession)
         mock_result_first = MagicMock()
-        mock_result_first.scalar_one_or_none.return_value = mock_post_first
+        mock_result_first.first.return_value = (mock_post_first, mock_media_file_first)
         mock_db_first.execute.return_value = mock_result_first
 
         value = WebhookValue(
             container_id="container_100", status="PUBLISHED", media_id="media_100"
         )
 
-        result_first = await _process_webhook_change(value, mock_db_first)
+        with patch("app.webhooks.meta.storage_service") as mock_storage:
+            result_first = await _process_webhook_change(value, mock_db_first)
 
         assert result_first == mock_post_first
         assert mock_post_first.status == PostStatus.PUBLISHED
         mock_db_first.commit.assert_called_once()
+        mock_storage.delete_from_public_bucket.assert_called_once_with("20/first_call.jpg")
 
-        # Second call: Post already PUBLISHED → skip (idempotent)
+        # Second call: Post already PUBLISHED → skip commit, still clean up
         mock_post_second = Mock(spec=Post)
         mock_post_second.id = 20
         mock_post_second.status = PostStatus.PUBLISHED  # Already published
 
+        mock_media_file_second = Mock(spec=MediaFile)
+        mock_media_file_second.key = "20/second_call.jpg"
+
         mock_db_second = AsyncMock(spec=AsyncSession)
         mock_result_second = MagicMock()
-        mock_result_second.scalar_one_or_none.return_value = mock_post_second
+        mock_result_second.first.return_value = (mock_post_second, mock_media_file_second)
         mock_db_second.execute.return_value = mock_result_second
 
-        with patch("app.webhooks.meta.logger") as mock_logger:
+        with patch("app.webhooks.meta.logger") as mock_logger, \
+             patch("app.webhooks.meta.storage_service") as mock_storage:
             result_second = await _process_webhook_change(value, mock_db_second)
 
         assert result_second == mock_post_second
         mock_db_second.commit.assert_not_called()  # No commit on duplicate
+        mock_storage.delete_from_public_bucket.assert_called_once_with("20/second_call.jpg")
 
 
 class TestWebhookSchemas:

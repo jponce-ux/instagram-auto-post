@@ -7,6 +7,9 @@ Provides endpoints for:
 
 The webhook endpoints are public (no JWT auth) but use HMAC-SHA1
 signature validation via X-Hub-Signature header.
+
+When Instagram confirms a post is live on the feed (PUBLISHED) or failed (ERROR),
+this handler cleans up the temporary public bucket copy of the image.
 """
 
 import logging
@@ -14,10 +17,13 @@ from typing import Optional
 
 from fastapi import APIRouter, Request, HTTPException, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.post import Post, PostStatus
+from app.models.media_file import MediaFile
+from app.services.storage import storage_service
 from app.webhooks.schemas import WebhookPayload, WebhookValue
 from app.webhooks.security import verify_webhook_signature
 
@@ -120,8 +126,12 @@ async def _process_webhook_change(
     2. ig_media_id (fallback if container_id lookup fails)
 
     Updates Post status based on webhook status:
-    - PUBLISHED: Sets status to PUBLISHED, stores ig_media_id
-    - ERROR/FAILED: Sets status to FAILED, stores error_message
+    - PUBLISHED: Confirms post is live on Instagram feed, cleans up public bucket
+    - ERROR/FAILED: Marks post as failed, cleans up public bucket
+
+    Cleanup: Deletes the temporary public bucket copy of the image once Instagram
+    confirms the post is on the feed (or failed), since the private encrypted copy
+    remains in the private bucket.
 
     Args:
         value: The webhook value containing status and IDs
@@ -130,23 +140,29 @@ async def _process_webhook_change(
     Returns:
         The updated Post if found, None otherwise
     """
-    from sqlalchemy import select
-
     post: Optional[Post] = None
 
-    # Try lookup by container_id first
+    # Try lookup by container_id first (with MediaFile joined for cleanup)
     if value.container_id:
         result = await db.execute(
-            select(Post).where(Post.ig_container_id == value.container_id)
+            select(Post, MediaFile)
+            .join(MediaFile, Post.media_file_id == MediaFile.id)
+            .where(Post.ig_container_id == value.container_id)
         )
-        post = result.scalar_one_or_none()
+        row = result.first()
+        if row:
+            post, media_file = row
 
     # Fallback to media_id lookup if container_id not found
     if post is None and value.media_id:
         result = await db.execute(
-            select(Post).where(Post.ig_media_id == value.media_id)
+            select(Post, MediaFile)
+            .join(MediaFile, Post.media_file_id == MediaFile.id)
+            .where(Post.ig_media_id == value.media_id)
         )
-        post = result.scalar_one_or_none()
+        row = result.first()
+        if row:
+            post, media_file = row
 
     # If no post found, log warning and return (acknowledge webhook)
     if post is None:
@@ -156,38 +172,55 @@ async def _process_webhook_change(
         )
         return None
 
-    # Update post status based on webhook data (idempotent)
+    # Determine if public bucket cleanup is needed
+    needs_cleanup = False
     status = value.status.upper()
 
     if status == "PUBLISHED":
-        # Idempotency: check if already in target state
+        # Even if already PUBLISHED (idempotent), still clean up public bucket
         if post.status == PostStatus.PUBLISHED:
             logger.info(
-                f"Post {post.id} already PUBLISHED, skipping update (idempotent)"
+                f"Post {post.id} already PUBLISHED, cleaning up public bucket"
             )
-            return post
-
-        post.status = PostStatus.PUBLISHED
-        if value.media_id:
-            post.ig_media_id = value.media_id
-        logger.info(f"Post {post.id} marked as PUBLISHED via webhook")
-        await db.commit()
+            needs_cleanup = True
+        else:
+            post.status = PostStatus.PUBLISHED
+            if value.media_id:
+                post.ig_media_id = value.media_id
+            logger.info(f"Post {post.id} marked as PUBLISHED via webhook")
+            await db.commit()
+            needs_cleanup = True
 
     elif status in ("ERROR", "FAILED"):
-        # Idempotency: check if already in target state
+        # Even if already FAILED (idempotent), still clean up public bucket
         if post.status == PostStatus.FAILED:
-            logger.info(f"Post {post.id} already FAILED, skipping update (idempotent)")
-            return post
-
-        post.status = PostStatus.FAILED
-        if value.error_message:
-            post.error_message = value.error_message
-        logger.warning(
-            f"Post {post.id} marked as FAILED via webhook: {value.error_message}"
-        )
-        await db.commit()
+            logger.info(
+                f"Post {post.id} already FAILED, cleaning up public bucket"
+            )
+            needs_cleanup = True
+        else:
+            post.status = PostStatus.FAILED
+            if value.error_message:
+                post.error_message = value.error_message
+            logger.warning(
+                f"Post {post.id} marked as FAILED via webhook: {value.error_message}"
+            )
+            await db.commit()
+            needs_cleanup = True
 
     else:
         logger.info(f"Post {post.id} received status update: {status}")
+
+    # Clean up public bucket: Instagram no longer needs the public URL
+    if needs_cleanup and media_file:
+        try:
+            await storage_service.delete_from_public_bucket(media_file.key)
+            logger.info(
+                f"Deleted {media_file.key} from public bucket after webhook confirmation"
+            )
+        except Exception as e:
+            logger.warning(
+                f"Failed to delete {media_file.key} from public bucket: {e}"
+            )
 
     return post
