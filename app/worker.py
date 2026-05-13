@@ -1,11 +1,14 @@
 import asyncio
+import json
 import logging
 import time
 from celery import Celery
 from datetime import timedelta
 
+import redis
+
 from app.core.config import settings
-from app.core.database import AsyncSessionLocal, SyncSessionLocal
+from app.core.database import SyncSessionLocal
 from app.models.post import Post, PostStatus
 from app.models.instagram import InstagramAccount
 from app.models.media_file import MediaFile
@@ -17,6 +20,29 @@ from app.services.instagram import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Redis client for SSE event publishing (sync, for Celery worker)
+_sse_redis = redis.Redis.from_url(settings.CELERY_BROKER_URL, decode_responses=True)
+_SSE_CHANNEL = "post_update"
+
+
+def _publish_post_event(post_id: int, status: str, user_id: int) -> None:
+    """Publish a post status change event to Redis for SSE streaming.
+
+    Fire-and-forget: failures are logged but don't affect post processing.
+    Sync version for use in Celery tasks.
+    """
+    try:
+        event = json.dumps({
+            "post_id": post_id,
+            "status": status,
+            "user_id": user_id,
+        })
+        _sse_redis.publish(_SSE_CHANNEL, event)
+        logger.debug(f"SSE event published: post_id={post_id}, status={status}")
+    except Exception as e:
+        logger.warning(f"Failed to publish SSE event for post {post_id}: {e}")
+
 
 celery_app = Celery(
     "worker",
@@ -80,6 +106,7 @@ def check_scheduled_posts(self) -> dict:
                     post.status = PostStatus.PROCESSING
                     session.commit()
                     process_instagram_post.delay(post.id)
+                    _publish_post_event(post.id, "processing", post.user_id)
                     dispatched_count += 1
                     logger.info(f"Dispatched post {post.id} for processing")
                 except Exception as e:
@@ -89,8 +116,7 @@ def check_scheduled_posts(self) -> dict:
             return total_found
 
     try:
-        # Run sync query in thread pool to avoid blocking
-        asyncio.run(asyncio.to_thread(_query_and_dispatch))
+        _query_and_dispatch()
         logger.info(
             f"Beat cycle complete: {dispatched_count}/{total_found} posts dispatched"
         )
@@ -100,27 +126,33 @@ def check_scheduled_posts(self) -> dict:
         return {"error": str(e), "found": 0, "dispatched": 0}
 
 
-async def _process_post_async(post_id: int) -> None:
+def _process_post_sync(post_id: int) -> None:
     """
-    Process an Instagram post asynchronously.
+    Process an Instagram post synchronously (for Celery worker).
+
+    Uses SyncSessionLocal for DB operations to avoid asyncpg event loop conflicts.
+    Wraps async external calls (storage, IG API) in individual asyncio.run() calls.
 
     Flow:
     1. Fetch Post + InstagramAccount + MediaFile from DB
     2. Update Post status -> PROCESSING
-    3. Generate fresh presigned URL
-    4. Create media container via Meta API
-    5. Poll container status until FINISHED (max 30s)
-    6. Publish media container
-    7. Update Post status -> PUBLISHED
+    3. Copy file to public bucket (Instagram needs public URL)
+    4. Generate public URL for Instagram API
+    5. Create media container via Meta API
+    6. Poll container status until FINISHED (max 30s)
+    7. Publish media container
+    8. Update Post status -> PUBLISHED
+    9. Delete file from public bucket (cleanup)
 
-    On error: Update Post status -> FAILED, store error_message
+    On error: Update Post status -> FAILED, store error_message, cleanup public bucket
     """
-    async with AsyncSessionLocal() as db:
+    from sqlalchemy import select
+    from sqlalchemy.sql import func
+
+    with SyncSessionLocal() as db:
         try:
             # Step 1: Fetch Post with related data
-            from sqlalchemy import select
-
-            result = await db.execute(
+            result = db.execute(
                 select(Post, InstagramAccount, MediaFile)
                 .join(InstagramAccount, Post.ig_account_id == InstagramAccount.id)
                 .join(MediaFile, Post.media_file_id == MediaFile.id)
@@ -135,23 +167,24 @@ async def _process_post_async(post_id: int) -> None:
 
             # Step 2: Update status to PROCESSING
             post.status = PostStatus.PROCESSING
-            await db.commit()
+            db.commit()
 
-            # Step 3: Generate fresh presigned URL (10 min expiration)
-            media_url = await storage_service.get_presigned_url(
-                media_file.key, expires=600
-            )
+            # Step 3: Copy file to public bucket for Instagram access
+            asyncio.run(storage_service.copy_to_public_bucket(media_file.key))
 
-            # Step 4: Create media container
+            # Step 4: Generate public URL (no auth params, Instagram can access)
+            media_url = asyncio.run(storage_service.get_public_url(media_file.key))
+
+            # Step 5: Create media container
             try:
-                container_id = await create_media_container(
+                container_id = asyncio.run(create_media_container(
                     ig_account_id=ig_account.instagram_account_id,
                     access_token=ig_account.access_token,
                     media_url=media_url,
                     caption=post.caption or "",
-                )
+                ))
                 post.ig_container_id = container_id
-                await db.commit()
+                db.commit()
             except Exception as e:
                 error_msg = str(e)
                 if "token" in error_msg.lower() and "expired" in error_msg.lower():
@@ -160,16 +193,16 @@ async def _process_post_async(post_id: int) -> None:
                     )
                 raise Exception(f"Failed to create media container: {error_msg}")
 
-            # Step 5: Poll container status (max 30s, every 2s)
+            # Step 6: Poll container status (max 30s, every 2s)
             max_wait = 30  # seconds
             poll_interval = 2  # seconds
             elapsed = 0
 
             while elapsed < max_wait:
-                status_data = await get_container_status(
+                status_data = asyncio.run(get_container_status(
                     container_id=container_id,
                     access_token=ig_account.access_token,
-                )
+                ))
                 status_code = status_data.get("status_code", "")
 
                 if status_code == "FINISHED":
@@ -177,7 +210,7 @@ async def _process_post_async(post_id: int) -> None:
                 elif status_code == "ERROR":
                     raise Exception("Media container processing failed")
 
-                await asyncio.sleep(poll_interval)
+                time.sleep(poll_interval)
                 elapsed += poll_interval
             else:
                 # Timeout reached
@@ -185,13 +218,13 @@ async def _process_post_async(post_id: int) -> None:
                     "Container processing timeout - max wait exceeded (30s)"
                 )
 
-            # Step 6: Publish media container
+            # Step 7: Publish media container
             try:
-                media_id = await publish_media_container(
+                media_id = asyncio.run(publish_media_container(
                     ig_account_id=ig_account.instagram_account_id,
                     access_token=ig_account.access_token,
                     container_id=container_id,
-                )
+                ))
                 post.ig_media_id = media_id
             except Exception as e:
                 error_msg = str(e)
@@ -199,27 +232,35 @@ async def _process_post_async(post_id: int) -> None:
                     error_msg = "Rate limit exceeded - please try again later"
                 raise Exception(f"Failed to publish media: {error_msg}")
 
-            # Step 7: Update status to PUBLISHED
-            from sqlalchemy.sql import func
-
+            # Step 8: Update status to PUBLISHED
             post.status = PostStatus.PUBLISHED
             post.published_at = func.now()
-            await db.commit()
+            db.commit()
+            _publish_post_event(post.id, "published", post.user_id)
+
+            # Step 9: Delete from public bucket (cleanup — private copy remains)
+            asyncio.run(storage_service.delete_from_public_bucket(media_file.key))
+            logger.info(f"Deleted {media_file.key} from public bucket after publish")
 
         except Exception as e:
             # Error handling: Update status to FAILED
-            await db.rollback()
+            db.rollback()
 
             # Fetch post again to update error
-            from sqlalchemy import select
-
-            result = await db.execute(select(Post).where(Post.id == post_id))
+            result = db.execute(select(Post).where(Post.id == post_id))
             post = result.scalar_one_or_none()
 
             if post:
                 post.status = PostStatus.FAILED
                 post.error_message = str(e)
-                await db.commit()
+                db.commit()
+                _publish_post_event(post.id, "failed", post.user_id)
+
+                # Cleanup: delete from public bucket on failure too
+                try:
+                    asyncio.run(storage_service.delete_from_public_bucket(media_file.key))
+                except Exception:
+                    pass  # Non-critical cleanup
 
             # Re-raise to mark task as failed in Celery
             raise
@@ -240,7 +281,7 @@ def process_instagram_post(self, post_id: int) -> str:
         Exception on failure (will trigger retry)
     """
     try:
-        asyncio.run(_process_post_async(post_id))
+        _process_post_sync(post_id)
         return f"Post {post_id} processed successfully"
     except Exception as exc:
         # Retry with exponential backoff

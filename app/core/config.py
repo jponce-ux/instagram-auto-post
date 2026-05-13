@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     MINIO_ROOT_USER: str
     MINIO_ROOT_PASSWORD: str
     MINIO_BUCKET_NAME: str
+    MINIO_PUBLIC_BUCKET_NAME: str = "instagram-uploads-public"
     MINIO_TUNNEL_HOST: str = ""
     MINIO_SSE_ENABLED: bool = False
 

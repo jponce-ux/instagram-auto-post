@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, Request, Form, UploadFile, File, HTTPException
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -7,6 +7,7 @@ from app.core.database import get_db
 from app.auth.dependencies import get_current_user_optional
 from app.models.user import User
 from app.dashboard.service import get_user_accounts, get_user_posts, create_post
+from app.services.sse import sse_manager, POST_UPDATE_CHANNEL
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 templates = Jinja2Templates(directory="app/templates")
@@ -68,7 +69,7 @@ async def posts_feed(
     request: Request,
     db: AsyncSession = Depends(get_db),
 ):
-    """Post history feed — returns JSON for HTMX polling."""
+    """Post history feed — returns JSON for initial load and fallback."""
     user = await get_current_user_optional(request, db)
     if user is None:
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
@@ -90,6 +91,49 @@ async def posts_feed(
     )
 
 
+@router.get("/posts/stream")
+async def posts_stream(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Server-Sent Events stream for real-time post status updates.
+
+    Subscribes to Redis pub/sub channel and forwards events to the client.
+    Filters events to only include posts belonging to the authenticated user.
+    Sends heartbeats every 15 seconds to keep the connection alive.
+    """
+    user = await get_current_user_optional(request, db)
+    if user is None:
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+
+    async def event_generator():
+        async for event in sse_manager.subscribe(POST_UPDATE_CHANNEL):
+            # Filter: only forward events for this user
+            if event.startswith(":heartbeat"):
+                yield event
+                continue
+            try:
+                # Parse the SSE event to check user_id
+                # Format: "event: post_update\ndata: {...}\n\n"
+                data_line = event.split("data: ")[1].strip()
+                event_data = __import__("json").loads(data_line)
+                if event_data.get("user_id") == user.id:
+                    yield event
+            except Exception:
+                # If parsing fails, forward anyway (safe fallback)
+                yield event
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",  # Disable nginx buffering
+        },
+    )
+
+
 @router.post("/post")
 async def create_post_endpoint(
     request: Request,
@@ -105,7 +149,10 @@ async def create_post_endpoint(
     if not file or not file.filename:
         return JSONResponse(status_code=400, content={"error": "Image is required"})
 
-    post = await create_post(db, user, file, caption)
+    try:
+        post = await create_post(db, user, file, caption)
+    except ValueError as e:
+        return JSONResponse(status_code=400, content={"error": str(e)})
 
     return JSONResponse(
         content={

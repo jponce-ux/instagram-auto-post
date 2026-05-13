@@ -42,7 +42,13 @@
 
     <!-- History Section -->
     <div id="history-wrapper" class="mt-6 bg-white rounded-lg shadow p-6 hidden">
-        <h2 class="text-lg font-semibold text-gray-900 mb-4">Historial de Publicaciones</h2>
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-lg font-semibold text-gray-900">Historial de Publicaciones</h2>
+            <div class="flex items-center space-x-2">
+                <span id="sse-status-dot" class="w-2.5 h-2.5 rounded-full bg-gray-400"></span>
+                <span id="sse-status-text" class="text-xs text-gray-500">Conectando...</span>
+            </div>
+        </div>
         <div id="history-section">
             <div class="text-center py-8">
                 <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600 mx-auto"></div>
@@ -244,9 +250,52 @@ document.addEventListener('DOMContentLoaded', function() {
     loadAccounts();
     loadPosts();
     
-    // Poll for new posts every 10 seconds
-    setInterval(loadPosts, 10000);
-    
+    // SSE connection for real-time post updates
+    let eventSource = null;
+    let reconnectTimeout = null;
+    const statusDot = document.getElementById('sse-status-dot');
+    const statusText = document.getElementById('sse-status-text');
+
+    function setSSEStatus(status) {
+        if (status === 'connected') {
+            statusDot.className = 'w-2.5 h-2.5 rounded-full bg-green-500';
+            statusText.textContent = 'En vivo';
+        } else if (status === 'disconnected') {
+            statusDot.className = 'w-2.5 h-2.5 rounded-full bg-red-500';
+            statusText.textContent = 'Desconectado';
+        } else {
+            statusDot.className = 'w-2.5 h-2.5 rounded-full bg-yellow-500 animate-pulse';
+            statusText.textContent = 'Conectando...';
+        }
+    }
+
+    function connectSSE() {
+        if (eventSource) {
+            eventSource.close();
+        }
+
+        setSSEStatus('connecting');
+        eventSource = new EventSource('/dashboard/posts/stream');
+
+        eventSource.addEventListener('post_update', function(event) {
+            // Post status changed — refresh the feed
+            loadPosts();
+        });
+
+        eventSource.onopen = function() {
+            setSSEStatus('connected');
+        };
+
+        eventSource.onerror = function() {
+            setSSEStatus('disconnected');
+            eventSource.close();
+            // Reconnect after 3 seconds
+            reconnectTimeout = setTimeout(connectSSE, 3000);
+        };
+    }
+
+    connectSSE();
+
     // Show toast based on URL query params (from OAuth redirect)
     const params = new URLSearchParams(window.location.search);
     if (params.get('success') === 'instagram_connected') {

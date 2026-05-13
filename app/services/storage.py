@@ -1,3 +1,4 @@
+import json
 import uuid
 from urllib.parse import urlparse, urlunparse
 
@@ -12,7 +13,13 @@ from app.models.media_file import MediaFile
 
 
 class StorageService:
-    """Async storage service for MinIO (S3-compatible) object storage."""
+    """Async storage service for MinIO (S3-compatible) object storage.
+
+    Uses a two-bucket strategy:
+    - Private bucket (MINIO_BUCKET_NAME): Encrypted permanent copy for the user
+    - Public bucket (MINIO_PUBLIC_BUCKET_NAME): Temporary copy for Instagram
+      to download. Deleted after successful publish.
+    """
 
     def __init__(self):
         """Initialize storage service with settings from config."""
@@ -20,6 +27,7 @@ class StorageService:
         self.access_key = settings.MINIO_ROOT_USER
         self.secret_key = settings.MINIO_ROOT_PASSWORD
         self.bucket = settings.MINIO_BUCKET_NAME
+        self.public_bucket = settings.MINIO_PUBLIC_BUCKET_NAME
         self.tunnel_host = settings.MINIO_TUNNEL_HOST
         self.sse_enabled = settings.MINIO_SSE_ENABLED
         self._client = None
@@ -35,17 +43,41 @@ class StorageService:
         )
 
     async def ensure_bucket_exists(self) -> None:
-        """Create bucket if not exists. Call on app startup."""
+        """Create both buckets if they don't exist. Set public read policy on public bucket."""
         async with await self._get_client() as client:
+            # Private bucket (encrypted, no public access)
             try:
                 await client.head_bucket(Bucket=self.bucket)
             except ClientError:
-                # Bucket does not exist, create it
                 await client.create_bucket(Bucket=self.bucket)
+
+            # Public bucket (readable by anyone, for Instagram API)
+            try:
+                await client.head_bucket(Bucket=self.public_bucket)
+            except ClientError:
+                await client.create_bucket(Bucket=self.public_bucket)
+
+            # Set public read policy on public bucket
+            policy = {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Sid": "PublicReadGetObject",
+                        "Effect": "Allow",
+                        "Principal": "*",
+                        "Action": ["s3:GetObject"],
+                        "Resource": [f"arn:aws:s3:::{self.public_bucket}/*"],
+                    }
+                ],
+            }
+            await client.put_bucket_policy(
+                Bucket=self.public_bucket,
+                Policy=json.dumps(policy),
+            )
 
     async def upload_file(self, file: UploadFile, user_id: int) -> str:
         """
-        Upload a file to MinIO with user-scoped path.
+        Upload a file to the private (encrypted) bucket.
 
         Args:
             file: FastAPI UploadFile object
@@ -61,7 +93,7 @@ class StorageService:
         file_ext = file.filename.split(".")[-1] if "." in file.filename else "bin"
         key = f"{user_id}/{uuid.uuid4()}.{file_ext}"
 
-        # Prepare upload arguments
+        # Prepare upload arguments with encryption
         extra_args = {"ContentType": file.content_type or "application/octet-stream"}
         if self.sse_enabled:
             extra_args["ServerSideEncryption"] = "AES256"
@@ -76,16 +108,68 @@ class StorageService:
             )
         return key
 
+    async def copy_to_public_bucket(self, key: str) -> None:
+        """Copy a file from the private bucket to the public bucket.
+
+        This makes the file accessible to Instagram API without auth.
+        The file should be deleted from the public bucket after publish.
+
+        Args:
+            key: Object key (same key used in both buckets)
+        """
+        async with await self._get_client() as client:
+            copy_source = {"Bucket": self.bucket, "Key": key}
+            await client.copy_object(
+                Bucket=self.public_bucket,
+                Key=key,
+                CopySource=copy_source,
+                ContentType="image/jpeg",  # Default, will be overridden if known
+            )
+
+    async def delete_from_public_bucket(self, key: str) -> None:
+        """Delete a file from the public bucket after successful publish.
+
+        Args:
+            key: Object key to delete
+        """
+        try:
+            async with await self._get_client() as client:
+                await client.delete_object(Bucket=self.public_bucket, Key=key)
+        except Exception as e:
+            # Non-critical: the public bucket is temporary, cleanup can be lazy
+            from app.core.config import settings
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Failed to delete {key} from public bucket: {e}")
+
+    async def get_public_url(self, key: str) -> str:
+        """Generate a clean public URL for the file (no auth params).
+
+        Used by Instagram API to download the image.
+
+        Args:
+            key: Object key (path/filename)
+
+        Returns:
+            Public URL string
+        """
+        if self.tunnel_host:
+            return f"https://{self.tunnel_host}/{self.public_bucket}/{key}"
+        # Fallback: direct MinIO URL (for local dev)
+        return f"{self.endpoint}/{self.public_bucket}/{key}"
+
     async def get_presigned_url(self, key: str, expires: int = 600) -> str:
         """
-        Generate a short-lived presigned URL for file access.
+        Generate a presigned URL for private file access.
+
+        Used for user-facing downloads from the private bucket.
 
         Args:
             key: Object key (path/filename)
             expires: URL expiration time in seconds (default: 600 = 10 minutes)
 
         Returns:
-            Presigned URL string with tunnel host if configured
+            Presigned URL string
         """
         async with await self._get_client() as client:
             url = await client.generate_presigned_url(
@@ -95,7 +179,6 @@ class StorageService:
             )
 
         # Replace internal host with tunnel host if configured
-        # Also force https scheme for public URLs (Cloudflare tunnel)
         if self.tunnel_host:
             parsed = urlparse(url)
             url = urlunparse(parsed._replace(scheme="https", netloc=self.tunnel_host))
