@@ -1,4 +1,3 @@
-import uuid
 import logging
 from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -46,12 +45,8 @@ async def create_post(
     4. Dispatch Celery task for immediate processing
     5. Publish SSE event for real-time dashboard update
     """
-    # Generate unique storage key
-    file_ext = file.filename.split(".")[-1] if "." in file.filename else "bin"
-    storage_key = f"{user.id}/{uuid.uuid4()}.{file_ext}"
-
-    # Upload to MinIO
-    await storage_service.upload_file(file, storage_key)
+    # Upload to MinIO — upload_file generates key as {user_id}/{uuid}.{ext}
+    storage_key = await storage_service.upload_file(file, user.id)
 
     # Create media file record
     media_file = MediaFile(
