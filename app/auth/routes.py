@@ -7,6 +7,7 @@ from sqlalchemy import select
 from app.core.database import get_db
 from app.auth.security import verify_password, get_password_hash, create_access_token
 from app.auth.dependencies import get_current_user_optional
+from app.auth.tokens import decode_verification_token, create_verification_token
 from app.auth.schemas import UserRegister, Token
 from app.models.user import User
 from app.services.email import EmailService
@@ -35,6 +36,127 @@ async def register_page(
     if user:
         return RedirectResponse(url="/dashboard", status_code=303)
     return templates.TemplateResponse(request=request, name="auth/register.html")
+
+
+@router.get("/confirm-email")
+async def confirm_email_page(
+    request: Request,
+    user: User | None = Depends(get_current_user_optional),
+):
+    """Confirm email page with router guard for authenticated users."""
+    if user:
+        return RedirectResponse(url="/dashboard", status_code=303)
+    error = request.query_params.get("error")
+    return templates.TemplateResponse(
+        request=request,
+        name="auth/confirm_email.html",
+        context={"error": error},
+    )
+
+
+@router.get("/verify-email/{token}")
+async def verify_email(
+    request: Request,
+    token: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Verify email using token from verification link."""
+    payload = decode_verification_token(token)
+
+    if payload is None:
+        # Token is expired or invalid
+        return RedirectResponse(
+            url="/auth/confirm-email?error=expired",
+            status_code=303,
+        )
+
+    user_id = int(payload.get("sub"))
+
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+
+    if not user:
+        return RedirectResponse(
+            url="/auth/confirm-email?error=invalid",
+            status_code=303,
+        )
+
+    if user.is_verified:
+        # Already verified, just redirect to login
+        return RedirectResponse(
+            url="/auth/login?verified=1",
+            status_code=303,
+        )
+
+    # Mark as verified
+    from sqlalchemy.sql import func
+    user.is_verified = True
+    user.verified_at = func.now()
+    await db.commit()
+
+    return RedirectResponse(
+        url="/auth/login?verified=1",
+        status_code=303,
+    )
+
+
+@router.post("/resend-verification-email")
+async def resend_verification_email(
+    request: Request,
+    email: str = Form(...),
+    db: AsyncSession = Depends(get_db),
+):
+    """Resend verification email with rate limiting (1 per 2 minutes per email)."""
+    # Check rate limit via Redis
+    import redis
+    from app.core.config import settings
+
+    try:
+        r = redis.Redis.from_url(settings.CELERY_BROKER_URL)
+        rate_key = f"resend:{email}"
+        if r.exists(rate_key):
+            ttl = r.ttl(rate_key)
+            return JSONResponse(
+                content={"error": f"Espera {ttl} segundos antes de solicitar otro email"},
+                status_code=429,
+            )
+    except Exception:
+        # Redis unavailable — allow resend but log warning
+        pass
+
+    # Check user exists and is not verified
+    result = await db.execute(select(User).where(User.email == email))
+    user = result.scalar_one_or_none()
+
+    if not user:
+        return JSONResponse(
+            content={"error": "Si el email existe, se enviará un nuevo enlace"},
+            status_code=200,
+        )
+
+    if user.is_verified:
+        return JSONResponse(
+            content={"error": "Tu cuenta ya está verificada. Puedes iniciar sesión."},
+            status_code=400,
+        )
+
+    # Generate new token and send email
+    EmailService.send_verification_email(
+        to=email,
+        user_name=email.split("@")[0],
+        user_id=user.id,
+    )
+
+    # Set rate limit
+    try:
+        r.setex(rate_key, 120, "1")
+    except Exception:
+        pass
+
+    return JSONResponse(
+        content={"message": "Correo de verificación enviado. Revisa tu bandeja de entrada."},
+        status_code=200,
+    )
 
 
 @router.post("/register")
@@ -70,10 +192,10 @@ async def register(
     await db.commit()
     await db.refresh(user)
 
-    # Send welcome email asynchronously (non-blocking via Celery)
-    EmailService.send_welcome_email(to=email, user_name=email.split("@")[0], user_id=user.id)
+    # Send verification email asynchronously (non-blocking via Celery)
+    EmailService.send_verification_email(to=email, user_name=email.split("@")[0], user_id=user.id)
 
-    return RedirectResponse(url="/auth/login?registered=1", status_code=303)
+    return RedirectResponse(url="/auth/confirm-email", status_code=303)
 
 
 @router.post("/login")
@@ -88,6 +210,12 @@ async def login(
 
     if not user or not verify_password(form_data.password, user.hashed_password):
         return RedirectResponse(url="/auth/login?error=1", status_code=303)
+
+    if not user.is_verified:
+        return RedirectResponse(
+            url="/auth/confirm-email?error=not_verified",
+            status_code=303,
+        )
 
     access_token = create_access_token(data={"sub": user.email})
 

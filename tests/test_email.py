@@ -142,9 +142,7 @@ class TestTaskDispatchResendEmail:
         THEN it returns the message_id and logs success"""
         from app.worker import task_dispatch_resend_email
 
-        mock_response = Mock()
-        mock_response.id = "msg_abc123"
-        mock_send.return_value = mock_response
+        mock_send.return_value = {"id": "msg_abc123"}
 
         result = task_dispatch_resend_email.run(
             to="user@example.com",
@@ -165,9 +163,7 @@ class TestTaskDispatchResendEmail:
         from app.worker import task_dispatch_resend_email
         from app.core.config import settings
 
-        mock_response = Mock()
-        mock_response.id = "msg_abc123"
-        mock_send.return_value = mock_response
+        mock_send.return_value = {"id": "msg_abc123"}
 
         task_dispatch_resend_email.run(
             to="user@example.com",
@@ -177,8 +173,8 @@ class TestTaskDispatchResendEmail:
 
         # Verify the send call used config defaults
         call_args = mock_send.call_args[0][0]
-        # SendParams is a dict with 'from_' key
-        from_str = call_args.get("from_", "")
+        # Now it's a dict with 'from' key (not 'from_')
+        from_str = call_args.get("from", "")
         assert settings.MAIL_FROM_ADDRESS in from_str
         assert settings.MAIL_FROM_NAME in from_str
 
@@ -236,13 +232,13 @@ class TestTaskDispatchResendEmail:
 # ============================================================
 
 class TestRegisterWithEmailIntegration:
-    """Test that registration triggers welcome email"""
+    """Test that registration triggers verification email"""
 
-    @patch("app.services.email.EmailService.send_welcome_email")
-    def test_register_calls_welcome_email(self, mock_welcome):
+    @patch("app.services.email.EmailService.send_verification_email")
+    def test_register_calls_verification_email(self, mock_verify):
         """GIVEN a user registers successfully (DB mocked)
         WHEN POST /auth/register is called
-        THEN EmailService.send_welcome_email is called"""
+        THEN EmailService.send_verification_email is called"""
         from fastapi.testclient import TestClient
         from app.main import app
         from unittest.mock import patch, AsyncMock, MagicMock
@@ -284,9 +280,9 @@ class TestRegisterWithEmailIntegration:
             # Should return success
             assert response.status_code in (200, 303, 307)
 
-        # Welcome email should have been called with user_id
-        mock_welcome.assert_called_once()
-        call_kwargs = mock_welcome.call_args[1]
+        # Verification email should have been called with user_id
+        mock_verify.assert_called_once()
+        call_kwargs = mock_verify.call_args[1]
         assert call_kwargs["to"] == "testuser@example.com"
         assert call_kwargs["user_name"] == "testuser"
         assert call_kwargs["user_id"] == 1
@@ -407,9 +403,7 @@ class TestEmailLogCeleryTaskUpdates:
         THEN _update_email_log_success is called with log_id and message_id"""
         from app.worker import task_dispatch_resend_email
 
-        mock_response = Mock()
-        mock_response.id = "msg_test123"
-        mock_send.return_value = mock_response
+        mock_send.return_value = {"id": "msg_test123"}
 
         result = task_dispatch_resend_email.run(
             to="task_test@example.com",
@@ -487,9 +481,7 @@ class TestEmailLogCeleryTaskUpdates:
         from app.worker import task_dispatch_resend_email
 
         with patch("resend.Emails.send") as mock_send:
-            mock_response = Mock()
-            mock_response.id = "msg_nolog"
-            mock_send.return_value = mock_response
+            mock_send.return_value = {"id": "msg_nolog"}
 
             result = task_dispatch_resend_email.run(
                 to="user@example.com",

@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+
+{% block title %}Verifica tu correo electrónico{% endblock %}
+
+{% block content %}
+<div class="min-h-[80vh] flex items-center justify-center px-4">
+    <div class="max-w-md w-full">
+        <div class="bg-white shadow-md rounded-lg p-8 text-center">
+            <!-- Icono: Heroicons envelope -->
+            {% if error == 'expired' %}
+            <svg class="w-16 h-16 mx-auto text-yellow-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+            </svg>
+            <h1 class="text-2xl font-bold text-gray-900 mt-4">Token vencido</h1>
+            <p class="text-gray-600 mt-2">
+                El enlace de verificación ha expirado (20 minutos).
+                Ingresa tu email para recibir uno nuevo.
+            </p>
+            {% elif error == 'invalid' %}
+            <svg class="w-16 h-16 mx-auto text-red-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+            </svg>
+            <h1 class="text-2xl font-bold text-gray-900 mt-4">Enlace inválido</h1>
+            <p class="text-gray-600 mt-2">
+                El enlace de verificación no es válido.
+                Ingresa tu email para recibir uno nuevo.
+            </p>
+            {% elif error == 'not_verified' %}
+            <svg class="w-16 h-16 mx-auto text-yellow-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+            </svg>
+            <h1 class="text-2xl font-bold text-gray-900 mt-4">Verifica tu email</h1>
+            <p class="text-gray-600 mt-2">
+                Debes verificar tu correo electrónico antes de iniciar sesión.
+                Revisa tu bandeja de entrada o solicita un nuevo enlace.
+            </p>
+            {% else %}
+            <svg class="w-16 h-16 mx-auto text-green-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
+            </svg>
+            <h1 class="text-2xl font-bold text-gray-900 mt-4">¡Casi listo!</h1>
+            <p class="text-gray-600 mt-2">
+                Hemos enviado un enlace de confirmación a tu dirección de correo electrónico.
+                Por favor, revisa tu bandeja de entrada <strong>(y la carpeta de spam)</strong> para activar tu cuenta.
+            </p>
+            {% endif %}
+
+            <!-- Resend form with HTMX -->
+            <div class="mt-6 pt-6 border-t border-gray-200">
+                <p class="text-sm text-gray-500 mb-3">¿No recibiste el correo?</p>
+                <form hx-post="/auth/resend-verification-email"
+                      hx-target="#resend-status"
+                      hx-swap="innerHTML"
+                      class="flex flex-col sm:flex-row gap-2">
+                    <input type="email"
+                           name="email"
+                           id="resend-email"
+                           placeholder="tu@email.com"
+                           required
+                           class="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm">
+                    <button type="submit"
+                            class="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-lg transition-colors text-sm whitespace-nowrap">
+                        Reenviar
+                    </button>
+                </form>
+                <div id="resend-status" class="mt-2 text-sm"></div>
+            </div>
+
+            <a href="/auth/login"
+               class="mt-4 inline-block w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg transition-colors">
+                Ir al Login
+            </a>
+        </div>
+    </div>
+</div>
+
+<script>
+// Handle HTMX response for resend
+document.addEventListener('htmx:afterRequest', function(evt) {
+    const statusDiv = document.getElementById('resend-status');
+    if (evt.detail.successful) {
+        const response = JSON.parse(evt.detail.xhr.responseText);
+        if (response.message) {
+            statusDiv.innerHTML = '<p class="text-green-600">' + response.message + '</p>';
+        } else if (response.error) {
+            statusDiv.innerHTML = '<p class="text-red-600">' + response.error + '</p>';
+        }
+    } else {
+        statusDiv.innerHTML = '<p class="text-red-600">Error al enviar. Intenta de nuevo.</p>';
+    }
+});
+</script>
+{% endblock %}

@@ -338,19 +338,20 @@ def task_dispatch_resend_email(
     import resend
     from app.core.config import settings
 
+    # Configure Resend API key in the worker process
+    resend.api_key = settings.RESEND_API_KEY
+
     sender = from_email or settings.MAIL_FROM_ADDRESS
     sender_name = from_name or settings.MAIL_FROM_NAME
 
-    params: resend.Emails.SendParams = resend.Emails.SendParams(
-        from_=f"{sender_name} <{sender}>",
-        to=[to],
-        subject=subject,
-        html=html_body,
-    )
-
     try:
-        email_response = resend.Emails.send(params)
-        message_id = getattr(email_response, "id", "unknown")
+        email_response = resend.Emails.send({
+            "from": f"{sender_name} <{sender}>",
+            "to": [to],
+            "subject": subject,
+            "html": html_body,
+        })
+        message_id = email_response.get("id", "unknown")
         logger.info(
             f"Email sent successfully to {to}: message_id={message_id}"
         )
@@ -369,22 +370,17 @@ def task_dispatch_resend_email(
             logger.error(
                 f"Email failed (client error {status_code}) for {to}: {e}"
             )
-            # Update log status on client error (no retry)
             if log_id:
                 _update_email_log_failure(log_id, str(e), retry_count)
-            # Don't retry client errors
             return {"error": str(e), "to": to, "status": "failed", "status_code": status_code}
 
-        # For 5xx or network errors, update retry count and let Celery retry
         logger.warning(
             f"Email failed for {to} (will retry, attempt {retry_count + 1}/3): {e}"
         )
 
-        # Update retry count in log
         if log_id:
             _update_email_log_retry(log_id, retry_count)
 
-        # Check if this is the last retry
         if retry_count >= 3:
             if log_id:
                 _update_email_log_failure(log_id, str(e), retry_count)

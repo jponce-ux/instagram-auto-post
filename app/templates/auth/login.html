@@ -93,11 +93,15 @@ async function handleLoginSubmit(event) {
     return false;
 }
 
-// Show success toast if redirected from registration
+// Show toast based on URL params
 document.addEventListener('DOMContentLoaded', function() {
     const params = new URLSearchParams(window.location.search);
-    if (params.get('registered') === '1') {
-        showToast('success', 'Cuenta creada exitosamente. Inicia sesión.');
+    if (params.get('verified') === '1') {
+        showToast('success', '¡Email verificado! Ya puedes iniciar sesión.');
+        window.history.replaceState({}, '', '/auth/login');
+    }
+    if (params.get('error') === 'not_verified') {
+        showToast('warning', 'Debes verificar tu email antes de iniciar sesión.');
         window.history.replaceState({}, '', '/auth/login');
     }
 });

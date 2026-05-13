@@ -31,10 +31,6 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-# Configure Resend API key at module load time
-import resend
-resend.api_key = settings.RESEND_API_KEY
-
 # Jinja2 environment for email templates
 _email_template_dir = Path(__file__).parent.parent / "templates" / "email"
 _email_env = Environment(
@@ -171,6 +167,72 @@ class EmailService:
         EmailService.send_transactional_email(
             to=to,
             subject="¡Bienvenido a Mi App Instagram!",
+            html_body=html_body,
+            log_id=log_id,
+        )
+
+    @staticmethod
+    def send_verification_email(
+        to: str,
+        user_name: str,
+        user_id: int,
+    ) -> None:
+        """
+        Send an email verification email with a unique verification link.
+
+        Generates a JWT token, builds the verification URL, renders the
+        welcome template with the link, and enqueues the email task.
+
+        Args:
+            to: Recipient email address
+            user_name: User's display name for personalization
+            user_id: User's database ID for token generation
+        """
+        from app.auth.tokens import create_verification_token
+
+        token = create_verification_token(user_id, to)
+        verify_url = f"{settings.BASE_URL}/auth/verify-email/{token}"
+
+        # Render template with verification link
+        try:
+            template = _email_env.get_template("welcome.html")
+            html_body = template.render(
+                user_name=user_name,
+                dashboard_url=f"{settings.BASE_URL}/dashboard",
+                verify_url=verify_url,
+            )
+        except Exception as e:
+            logger.error(f"Failed to render welcome email template: {e}")
+            html_body = (
+                f"<p>Hola {user_name}, bienvenido a Mi App Instagram!</p>"
+                f'<p><a href="{verify_url}">Verifica tu email aquí</a></p>'
+            )
+
+        # Create email log
+        log_id = None
+        from app.core.database import SyncSessionLocal
+        from app.models.email_log import EmailLog, EmailStatus
+
+        try:
+            with SyncSessionLocal() as session:
+                log_entry = EmailLog(
+                    user_id=user_id,
+                    email_type="verification",
+                    to_email=to,
+                    from_email=settings.MAIL_FROM_ADDRESS,
+                    status=EmailStatus.QUEUED,
+                    template_name="welcome",
+                    metadata_={"user_name": user_name, "type": "verification"},
+                )
+                session.add(log_entry)
+                session.commit()
+                log_id = log_entry.id
+        except Exception as e:
+            logger.warning(f"Failed to create email log: {e}. Continuing without logging.")
+
+        EmailService.send_transactional_email(
+            to=to,
+            subject="¡Bienvenido! Verifica tu email para activar tu cuenta",
             html_body=html_body,
             log_id=log_id,
         )
