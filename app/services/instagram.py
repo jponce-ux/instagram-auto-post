@@ -1,7 +1,7 @@
 import httpx
 from app.core.config import settings
 
-META_API_BASE = "https://graph.facebook.com/v18.0"
+META_API_BASE = "https://graph.instagram.com/v21.0"
 INSTAGRAM_OAUTH_BASE = "https://api.instagram.com/oauth"
 
 
