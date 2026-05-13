@@ -171,7 +171,8 @@ def _process_post_sync(post_id: int) -> None:
             post.status = PostStatus.PROCESSING
             db.commit()
 
-            # Step 3: Copy file to public bucket for Instagram access
+            # Step 3: Ensure public bucket exists with correct policy, then copy file
+            asyncio.run(storage_service.ensure_bucket_exists())
             asyncio.run(storage_service.copy_to_public_bucket(media_file.key))
 
             # Step 4: Generate public URL (no auth params, Instagram can access)

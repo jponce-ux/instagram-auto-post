@@ -71,7 +71,7 @@ async def create_media_container(
         container_id: The ID of the created media container
 
     Raises:
-        httpx.HTTPError: If the API request fails
+        Exception: If the API request fails, with Instagram error details
     """
     async with httpx.AsyncClient() as client:
         response = await client.post(
@@ -82,7 +82,17 @@ async def create_media_container(
                 "caption": caption,
             },
         )
-        response.raise_for_status()
+        if response.status_code != 200:
+            try:
+                error_data = response.json().get("error", {})
+                error_msg = error_data.get("message", response.text)
+                error_code = error_data.get("code", response.status_code)
+                error_type = error_data.get("type", "")
+                raise Exception(
+                    f"Instagram API error {error_code}: {error_type} — {error_msg}"
+                )
+            except ValueError:
+                response.raise_for_status()
         data = response.json()
         return data.get("id")
 
@@ -119,7 +129,7 @@ async def publish_media_container(
         media_id: The published IG Media ID
 
     Raises:
-        httpx.HTTPError: If the API request fails (including rate limits)
+        Exception: If the API request fails, with Instagram error details
     """
     async with httpx.AsyncClient() as client:
         response = await client.post(
@@ -129,6 +139,16 @@ async def publish_media_container(
                 "creation_id": container_id,
             },
         )
-        response.raise_for_status()
+        if response.status_code != 200:
+            try:
+                error_data = response.json().get("error", {})
+                error_msg = error_data.get("message", response.text)
+                error_code = error_data.get("code", response.status_code)
+                error_type = error_data.get("type", "")
+                raise Exception(
+                    f"Instagram API error {error_code}: {error_type} — {error_msg}"
+                )
+            except ValueError:
+                response.raise_for_status()
         data = response.json()
         return data.get("id")
