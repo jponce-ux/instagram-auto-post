@@ -3,7 +3,7 @@ ticket: TASK-024
 phase: spec
 model: qwen3.6-plus
 generated: 2026-05-13
-status: draft
+status: completed
 ---
 
 # Especificacion: Refactor UX/UI Dashboard y Correcciones Esteticas

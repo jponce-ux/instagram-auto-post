@@ -8,8 +8,8 @@ status: draft
 
 # Tareas: Refactor UX/UI Dashboard
 
-Estado: En Progreso
-Progreso: 0/7 tareas
+Estado: Completado
+Progreso: 7/7 tareas
 
 ## Fase 1: Backend - Presigned URLs para Miniaturas
 

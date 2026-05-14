@@ -30,5 +30,13 @@
         {% block content %}{% endblock %}
     </main>
     {% include "components/toast.html" %}
+    <script>
+        // Global HTMX interceptor: redirect to login on 401 (session expired)
+        document.body.addEventListener('htmx:responseError', function(evt) {
+            if (evt.detail.xhr.status === 401) {
+                window.location.href = '/auth/login?error=session_expired';
+            }
+        });
+    </script>
 </body>
 </html>

@@ -69,6 +69,8 @@ services:
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       MAIL_FROM_ADDRESS: ${MAIL_FROM_ADDRESS:-onboarding@resend.dev}
       MAIL_FROM_NAME: ${MAIL_FROM_NAME:-Mi App Instagram}
+      SESSION_INACTIVITY_LIMIT_HOURS: ${SESSION_INACTIVITY_LIMIT_HOURS:-24}
+      SESSION_COOKIE_MAX_AGE_DAYS: ${SESSION_COOKIE_MAX_AGE_DAYS:-7}
     ports:
       - "8000:8000"
     healthcheck:

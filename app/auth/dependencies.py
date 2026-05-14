@@ -3,6 +3,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import jwt, JWTError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from datetime import datetime, timedelta, timezone
 from app.core.database import get_db
 from app.core.config import settings
 from app.models.user import User
@@ -24,6 +25,25 @@ async def get_current_user(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Could not validate credentials",
             )
+
+        # Check if token has exceeded the inactivity limit (hard timeout)
+        iat = payload.get("iat")
+        if iat is not None:
+            if isinstance(iat, (int, float)):
+                iat_dt = datetime.fromtimestamp(iat, tz=timezone.utc)
+            else:
+                try:
+                    iat_dt = datetime.fromisoformat(str(iat)).replace(tzinfo=timezone.utc)
+                except (ValueError, TypeError):
+                    iat_dt = None
+            if iat_dt is not None:
+                now = datetime.now(timezone.utc)
+                limit = timedelta(hours=settings.SESSION_INACTIVITY_LIMIT_HOURS)
+                if (now - iat_dt) >= limit:
+                    raise HTTPException(
+                        status_code=status.HTTP_401_UNAUTHORIZED,
+                        detail="Session expired due to inactivity",
+                    )
     except JWTError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -64,6 +84,23 @@ async def get_current_user_optional(
         email = payload.get("sub")
         if not email:
             return None
+
+        # Check if token has exceeded the inactivity limit (hard timeout)
+        iat = payload.get("iat")
+        if iat is not None:
+            if isinstance(iat, (int, float)):
+                iat_dt = datetime.fromtimestamp(iat, tz=timezone.utc)
+            else:
+                try:
+                    iat_dt = datetime.fromisoformat(str(iat)).replace(tzinfo=timezone.utc)
+                except (ValueError, TypeError):
+                    iat_dt = None
+            if iat_dt is not None:
+                now = datetime.now(timezone.utc)
+                limit = timedelta(hours=settings.SESSION_INACTIVITY_LIMIT_HOURS)
+                if (now - iat_dt) >= limit:
+                    # Token has exceeded the inactivity limit — treat as invalid
+                    return None
     except JWTError:
         return None
 

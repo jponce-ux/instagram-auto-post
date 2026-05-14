@@ -5,6 +5,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.core.database import get_db
+from app.core.config import settings
 from app.auth.security import verify_password, get_password_hash, create_access_token
 from app.auth.dependencies import get_current_user_optional
 from app.auth.tokens import decode_verification_token, create_verification_token
@@ -220,12 +221,14 @@ async def login(
     access_token = create_access_token(data={"sub": user.email})
 
     response = RedirectResponse(url="/dashboard", status_code=303)
+    max_age = settings.SESSION_COOKIE_MAX_AGE_DAYS * 86400
     response.set_cookie(
         key="access_token",
         value=f"Bearer {access_token}",
         httponly=True,
         secure=True,
         samesite="lax",
+        max_age=max_age,
     )
     return response
 

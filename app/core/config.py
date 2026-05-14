@@ -31,6 +31,10 @@ class Settings(BaseSettings):
     MAIL_FROM_ADDRESS: str = "onboarding@resend.dev"
     MAIL_FROM_NAME: str = "Mi App Instagram"
 
+    # Session Configuration (rolling sessions)
+    SESSION_INACTIVITY_LIMIT_HOURS: int = 24
+    SESSION_COOKIE_MAX_AGE_DAYS: int = 7
+
     model_config = SettingsConfigDict(
         env_file=".env",
         extra="ignore",

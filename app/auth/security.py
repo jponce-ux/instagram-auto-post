@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from jose import jwt
 from passlib.context import CryptContext
 from app.core.config import settings
@@ -16,6 +16,13 @@ def get_password_hash(password: str) -> str:
 
 def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
     to_encode = data.copy()
-    expire = datetime.utcnow() + (expires_delta or timedelta(minutes=60))
-    to_encode.update({"exp": expire})
+    now = datetime.now(timezone.utc)
+    # Use configured inactivity limit as default expiration
+    if expires_delta is None:
+        expires_delta = timedelta(hours=settings.SESSION_INACTIVITY_LIMIT_HOURS)
+    expire = now + expires_delta
+    to_encode.update({
+        "exp": expire,
+        "iat": now,
+    })
     return jwt.encode(to_encode, settings.SECRET_KEY, algorithm="HS256")

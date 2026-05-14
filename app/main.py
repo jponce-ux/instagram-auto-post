@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.routes import router as auth_router
 from app.auth.instagram import router as instagram_router
 from app.auth.dependencies import get_current_user, get_current_user_optional
+from app.auth.middleware import RollingSessionMiddleware
 from app.core.database import get_db
 from app.models.user import User
 from app.models.media_file import MediaFile
@@ -27,6 +28,9 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Mi App Instagram", version="0.1.0", lifespan=lifespan)
+
+# Rolling session middleware — refreshes JWT cookie on each authenticated request
+app.add_middleware(RollingSessionMiddleware)
 
 app.include_router(auth_router)
 app.include_router(instagram_router)
