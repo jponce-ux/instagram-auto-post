@@ -71,7 +71,7 @@
             Descripción
         </label>
         <textarea id="caption" name="caption" rows="3"
-                  class="shadow-sm focus:ring-purple-500 focus:border-purple-500 block w-full sm:text-sm border-gray-300 rounded-md"
+                  class="shadow-sm focus:ring-purple-500 focus:border-purple-500 block w-full sm:text-sm border-gray-300 rounded-md px-4 py-2.5"
                   placeholder="Escribe una descripción para tu publicación..."></textarea>
         <p class="mt-1 text-xs text-gray-500">Opcional. La descripción puede estar vacía.</p>
     </div>
@@ -186,7 +186,10 @@ document.getElementById('post-form').addEventListener('submit', async function(e
         const data = await response.json();
         
         if (response.ok && data.success) {
-            showToast('success', 'Publicación creada exitosamente');
+            showToast('success', 'Tarea encolada — publicación en proceso');
+            // Reset button immediately before clearing form
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Publicar';
             clearPostForm();
             // Refresh posts feed
             if (typeof loadPosts === 'function') {

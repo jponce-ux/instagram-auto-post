@@ -5,21 +5,21 @@
         <div>
             <label for="register-email" class="block text-sm font-medium text-gray-700">Correo electronico</label>
             <input type="email" id="register-email" name="email" required
-                   class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                   class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm px-4 py-2.5"
                    placeholder="tu@email.com"
                    oninput="validateRegisterForm()">
         </div>
         <div>
             <label for="register-password" class="block text-sm font-medium text-gray-700">Contrasena</label>
             <input type="password" id="register-password" name="password" required minlength="6"
-                   class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                   class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm px-4 py-2.5"
                    placeholder="Minimo 6 caracteres"
                    oninput="validateRegisterForm()">
         </div>
         <div>
             <label for="register-confirm" class="block text-sm font-medium text-gray-700">Confirmar contrasena</label>
             <input type="password" id="register-confirm" name="password_confirm" required minlength="6"
-                   class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                   class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm px-4 py-2.5"
                    placeholder="Repite la contrasena"
                    oninput="validateRegisterForm()">
             <p id="register-confirm-error" class="hidden mt-1 text-sm text-red-600">Las contrasenas no coinciden</p>

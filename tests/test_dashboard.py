@@ -292,7 +292,8 @@ class TestHtmxPolling:
         mock_post.status = PostStatus.PENDING
         mock_post.created_at = datetime.now(timezone.utc)
 
-        with patch("app.dashboard.routes.get_user_posts", return_value=[mock_post]):
+        with patch("app.dashboard.routes.get_user_posts", return_value=[mock_post]), \
+             patch("app.dashboard.routes.get_post_image_url", return_value=None):
             response = client.get(
                 "/dashboard/posts/feed",
                 cookies={"access_token": "Bearer valid"},

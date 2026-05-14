@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.auth.dependencies import get_current_user_optional
 from app.models.user import User
-from app.dashboard.service import get_user_accounts, get_user_posts, create_post
+from app.dashboard.service import get_user_accounts, get_user_posts, create_post, get_post_image_url
 from app.services.sse import sse_manager, POST_UPDATE_CHANNEL
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
@@ -69,25 +69,30 @@ async def posts_feed(
     request: Request,
     db: AsyncSession = Depends(get_db),
 ):
-    """Post history feed — returns JSON for initial load and fallback."""
+    """Post history feed — returns JSON for initial load and fallback.
+
+    Includes presigned image URLs for each post's thumbnail.
+    """
     user = await get_current_user_optional(request, db)
     if user is None:
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
 
     posts = await get_user_posts(db, user)
 
+    # Generate presigned URLs for each post's image
+    posts_data = []
+    for post in posts:
+        image_url = await get_post_image_url(db, user, post)
+        posts_data.append({
+            "id": post.id,
+            "caption": post.caption,
+            "status": post.status.value,
+            "created_at": post.created_at.isoformat(),
+            "image_url": image_url,
+        })
+
     return JSONResponse(
-        content={
-            "posts": [
-                {
-                    "id": post.id,
-                    "caption": post.caption,
-                    "status": post.status.value,
-                    "created_at": post.created_at.isoformat(),
-                }
-                for post in posts
-            ]
-        }
+        content={"posts": posts_data}
     )
 
 

@@ -30,6 +30,40 @@ async def get_user_posts(db: AsyncSession, user: User) -> list[Post]:
     return list(result.scalars().all())
 
 
+async def get_post_image_url(db: AsyncSession, user: User, post: Post) -> str | None:
+    """Generate a presigned URL for a post's image from the private MinIO bucket.
+
+    Verifies that the user owns the media file before generating the URL.
+    Returns None if the post has no associated media file.
+
+    Args:
+        db: AsyncSession for database operations
+        user: The authenticated user (for ownership check)
+        post: The Post to get the image URL for
+
+    Returns:
+        Presigned URL string or None if no image
+    """
+    if not post.media_file_id:
+        return None
+
+    result = await db.execute(
+        select(MediaFile).where(
+            MediaFile.id == post.media_file_id,
+            MediaFile.user_id == user.id,
+        )
+    )
+    media_file = result.scalar_one_or_none()
+    if not media_file:
+        return None
+
+    try:
+        return await storage_service.get_presigned_url(media_file.key, expires=3600)
+    except Exception as e:
+        logger.warning(f"Failed to generate presigned URL for post {post.id}: {e}")
+        return None
+
+
 async def create_post(
     db: AsyncSession,
     user: User,
