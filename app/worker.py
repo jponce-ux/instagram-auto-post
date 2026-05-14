@@ -135,7 +135,7 @@ def _process_post_sync(post_id: int) -> None:
 
     Flow:
     1. Fetch Post + InstagramAccount + MediaFile from DB
-    2. Update Post status -> PROCESSING
+    2. Update Post status -> PROCESSING, clear previous error_message
     3. Copy file to public bucket (Instagram needs public URL)
     4. Generate public URL for Instagram API
     5. Create media container via Meta API
@@ -146,7 +146,8 @@ def _process_post_sync(post_id: int) -> None:
     Public bucket cleanup is NOT done here — the webhook handler deletes the
     public copy once Instagram confirms the image is live on the feed.
 
-    On error: Update Post status -> FAILED, store error_message, cleanup public bucket
+    On error: rollback, cleanup public bucket, re-raise.
+    Status transitions (FAILED/RETRYING) are handled by the task wrapper.
     """
     from sqlalchemy import select
     from sqlalchemy.sql import func
@@ -167,8 +168,9 @@ def _process_post_sync(post_id: int) -> None:
 
             post, ig_account, media_file = row
 
-            # Step 2: Update status to PROCESSING
+            # Step 2: Update status to PROCESSING, clear any previous error
             post.status = PostStatus.PROCESSING
+            post.error_message = None
             db.commit()
 
             # Step 3: Ensure public bucket exists with correct policy, then copy file
@@ -190,7 +192,7 @@ def _process_post_sync(post_id: int) -> None:
                 db.commit()
             except Exception as e:
                 error_msg = str(e)
-                if "token" in error_msg.lower() and "expired" in error_msg.lower():
+                if "token" in error_msg.lower() and ("expired" in error_msg.lower() or "invalid" in error_msg.lower()):
                     error_msg = (
                         "Token expired - please reconnect your Instagram account"
                     )
@@ -245,26 +247,16 @@ def _process_post_sync(post_id: int) -> None:
             _publish_post_event(post.id, "published", post.user_id)
 
         except Exception as e:
-            # Error handling: Update status to FAILED
+            # Rollback any partial DB changes
             db.rollback()
 
-            # Fetch post again to update error
-            result = db.execute(select(Post).where(Post.id == post_id))
-            post = result.scalar_one_or_none()
+            # Cleanup: delete from public bucket (non-critical)
+            try:
+                asyncio.run(storage_service.delete_from_public_bucket(media_file.key))
+            except Exception:
+                pass
 
-            if post:
-                post.status = PostStatus.FAILED
-                post.error_message = str(e)
-                db.commit()
-                _publish_post_event(post.id, "failed", post.user_id)
-
-                # Cleanup: delete from public bucket on failure too
-                try:
-                    asyncio.run(storage_service.delete_from_public_bucket(media_file.key))
-                except Exception:
-                    pass  # Non-critical cleanup
-
-            # Re-raise to mark task as failed in Celery
+            # Re-raise so the task wrapper can decide status
             raise
 
 
@@ -273,6 +265,12 @@ def process_instagram_post(self, post_id: int) -> str:
     """
     Celery task to process an Instagram post.
 
+    Handles status transitions based on retry state:
+    - Processing: while attempting or retrying
+    - Retrying: between attempts (with error info for the dashboard)
+    - Failed: all retries exhausted
+    - Published: successful completion
+
     Args:
         post_id: The ID of the Post to process
 
@@ -280,19 +278,40 @@ def process_instagram_post(self, post_id: int) -> str:
         Success message with post_id
 
     Raises:
-        Exception on failure (will trigger retry)
+        Exception on final failure (after all retries exhausted)
     """
+    retry_count = self.request.retries
+
     try:
         _process_post_sync(post_id)
         return f"Post {post_id} processed successfully"
     except Exception as exc:
-        # Retry with exponential backoff
-        retry_count = self.request.retries
         if retry_count < 3:
+            # Mark as RETRYING so dashboard shows "reintentando..."
+            # instead of "fallido" while retries are pending
+            with SyncSessionLocal() as db:
+                result = db.execute(select(Post).where(Post.id == post_id))
+                post = result.scalar_one_or_none()
+                if post:
+                    post.status = PostStatus.RETRYING
+                    post.error_message = str(exc)
+                    db.commit()
+                    _publish_post_event(post.id, "retrying", post.user_id)
+
             # Exponential backoff: 60s, 120s, 240s
             countdown = 60 * (2**retry_count)
             raise self.retry(exc=exc, countdown=countdown)
-        raise
+        else:
+            # All retries exhausted — mark as FAILED
+            with SyncSessionLocal() as db:
+                result = db.execute(select(Post).where(Post.id == post_id))
+                post = result.scalar_one_or_none()
+                if post:
+                    post.status = PostStatus.FAILED
+                    post.error_message = str(exc)
+                    db.commit()
+                    _publish_post_event(post.id, "failed", post.user_id)
+            raise
 
 
 # ============================================================

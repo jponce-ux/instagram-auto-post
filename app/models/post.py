@@ -10,6 +10,7 @@ class PostStatus(str, enum.Enum):
     PROCESSING = "processing"
     PUBLISHED = "published"
     FAILED = "failed"
+    RETRYING = "retrying"
 
 
 class Post(Base):
