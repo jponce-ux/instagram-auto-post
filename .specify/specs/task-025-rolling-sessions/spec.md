@@ -3,7 +3,7 @@ ticket: TASK-025
 phase: spec
 model: qwen3.6-plus
 generated: 2026-05-13
-status: draft
+status: completed
 ---
 
 # Especificacion: Rolling Sessions y Persistencia Extendida
