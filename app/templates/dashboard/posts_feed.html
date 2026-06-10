@@ -21,11 +21,17 @@
             {% for post in posts %}
             <tr>
                 <td class="px-4 py-4 whitespace-nowrap">
-                    <div class="w-12 h-12 bg-gray-200 rounded-lg flex items-center justify-center">
-                        <svg class="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
-                        </svg>
-                    </div>
+                    {% if post.thumbnail_url or post.full_image_url %}
+                        {% set display_url = post.thumbnail_url or post.full_image_url %}
+                        {% set full_url = post.full_image_url or post.thumbnail_url %}
+                        <img src="{{ display_url }}" alt="Thumbnail" class="w-12 h-12 rounded-lg object-cover cursor-pointer hover:opacity-80 transition-opacity" data-full-url="{{ full_url }}" onclick="openLightbox(this.dataset.fullUrl)">
+                    {% else %}
+                        <div class="w-12 h-12 bg-gray-200 rounded-lg flex items-center justify-center">
+                            <svg class="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                            </svg>
+                        </div>
+                    {% endif %}
                 </td>
                 <td class="px-4 py-4">
                     <div class="text-sm text-gray-900 truncate max-w-xs">

@@ -16,6 +16,7 @@ class MediaFile(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     key = Column(String, unique=True, nullable=False)  # {user_id}/{uuid}.{ext}
+    thumbnail_key = Column(String, nullable=True)  # {user_id}/{uuid}-thumbnail.{ext}
     original_filename = Column(String, nullable=False)
     content_type = Column(String, nullable=False)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)

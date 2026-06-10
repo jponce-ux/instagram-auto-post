@@ -25,7 +25,7 @@ status: draft
 
 **Purpose**: Add Pillow dependency for thumbnail generation
 
-- [ ] T001 Add Pillow dependency via `uv add pillow`
+- [x] T001 Add Pillow dependency via `uv add pillow`
 
 ---
 
@@ -35,10 +35,10 @@ status: draft
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T002 [P] Add `thumbnail_key` column to MediaFile model in `app/models/media_file.py`
-- [ ] T003 Create Alembic migration for `thumbnail_key` column: `uv run alembic revision --autogenerate -m "add thumbnail_key to media_files"` then verify in `migrations/versions/`
-- [ ] T004 Implement `generate_thumbnail()` method in `app/services/storage.py` — accepts image bytes, returns thumbnail bytes using Pillow (200px width, maintain aspect ratio, JPEG output)
-- [ ] T005 Implement `upload_thumbnail()` method in `app/services/storage.py` — uploads thumbnail bytes to private bucket with `-thumbnail` suffix in key
+- [x] T002 [P] Add `thumbnail_key` column to MediaFile model in `app/models/media_file.py`
+- [x] T003 Create Alembic migration for `thumbnail_key` column: `uv run alembic revision --autogenerate -m "add thumbnail_key to media_files"` then verify in `migrations/versions/`
+- [x] T004 Implement `generate_thumbnail()` method in `app/services/storage.py` — accepts image bytes, returns thumbnail bytes using Pillow (200px width, maintain aspect ratio, JPEG output)
+- [x] T005 Implement `upload_thumbnail()` method in `app/services/storage.py` — uploads thumbnail bytes to private bucket with `-thumbnail` suffix in key
 
 **Checkpoint**: Foundation ready — thumbnail generation and storage infrastructure in place
 
@@ -52,9 +52,9 @@ status: draft
 
 ### Implementation for User Story 1
 
-- [ ] T006 [US1] Modify `upload_file_for_user()` in `app/services/storage.py` to also generate and upload a thumbnail, returning both keys
-- [ ] T007 [US1] Update `create_post()` in `app/dashboard/service.py` to use the new thumbnail-aware upload flow — store `thumbnail_key` in the MediaFile record
-- [ ] T008 [US1] Verify thumbnail generation works end-to-end: upload a test image via the dashboard, check MinIO for both files, verify thumbnail is < 200KB
+- [x] T006 [US1] Modify `upload_file_for_user()` in `app/services/storage.py` to also generate and upload a thumbnail, returning both keys
+- [x] T007 [US1] Update `create_post()` in `app/dashboard/service.py` to use the new thumbnail-aware upload flow — store `thumbnail_key` in the MediaFile record
+- [x] T008 [US1] Verify thumbnail generation works end-to-end: upload a test image via the dashboard, check MinIO for both files, verify thumbnail is < 200KB
 
 **Checkpoint**: At this point, every new upload produces both an original and a thumbnail in MinIO. The `MediaFile.thumbnail_key` column is populated.
 
@@ -68,12 +68,12 @@ status: draft
 
 ### Implementation for User Story 2
 
-- [ ] T009 [P] [US2] Add `get_presigned_url_for_key()` helper in `app/services/storage.py` — generates presigned URL for any given storage key (original or thumbnail)
-- [ ] T010 [US2] Modify `get_post_image_url()` in `app/dashboard/service.py` to return a dict with both `thumbnail_url` and `full_image_url` (fallback to full if no thumbnail)
-- [ ] T011 [US2] Update `posts_feed` endpoint in `app/dashboard/routes.py` to include `thumbnail_url` and `full_image_url` in the JSON response (replace old `image_url` field)
-- [ ] T012 [US2] Update `renderPosts()` in `app/templates/dashboard/layout.html` to use `thumbnail_url` for the `<img src>` and embed `full_image_url` as `data-full-url` attribute
-- [ ] T013 [US2] Update server-rendered `app/templates/dashboard/posts_feed.html` to show thumbnail images with `data-full-url` attribute for HTMX fallback
-- [ ] T014 [US2] Verify dashboard loads thumbnails: check Network tab for thumbnail-sized requests (< 200KB each), confirm `data-full-url` attribute is present on each image element
+- [x] T009 [P] [US2] Add `get_presigned_url_for_key()` helper in `app/services/storage.py` — generates presigned URL for any given storage key (original or thumbnail)
+- [x] T010 [US2] Modify `get_post_image_url()` in `app/dashboard/service.py` to return a dict with both `thumbnail_url` and `full_image_url` (fallback to full if no thumbnail)
+- [x] T011 [US2] Update `posts_feed` endpoint in `app/dashboard/routes.py` to include `thumbnail_url` and `full_image_url` in the JSON response (replace old `image_url` field)
+- [x] T012 [US2] Update `renderPosts()` in `app/templates/dashboard/layout.html` to use `thumbnail_url` for the `<img src>` and embed `full_image_url` as `data-full-url` attribute
+- [x] T013 [US2] Update server-rendered `app/templates/dashboard/posts_feed.html` to show thumbnail images with `data-full-url` attribute for HTMX fallback
+- [x] T014 [US2] Verify dashboard loads thumbnails: check Network tab for thumbnail-sized requests (< 200KB each), confirm `data-full-url` attribute is present on each image element
 
 **Checkpoint**: Dashboard history table now shows thumbnails. Full-size URLs are embedded as metadata for the lightbox.
 
@@ -87,11 +87,11 @@ status: draft
 
 ### Implementation for User Story 3
 
-- [ ] T015 [P] [US3] Add lightbox CSS classes in `app/static/css/app.css` — overlay (fixed, full-screen, dark semi-transparent), centered image container, rounded borders (`border-radius: 12px`), responsive max-width
-- [ ] T016 [US3] Add lightbox HTML structure to `app/templates/dashboard/layout.html` — hidden `<div id="lightbox">` with overlay and `<img id="lightbox-img">`
-- [ ] T017 [US3] Add lightbox JavaScript in `app/templates/dashboard/layout.html` — click handler on thumbnails reads `data-full-url`, sets `lightbox-img.src`, shows overlay; click-outside and Escape key handlers to close
-- [ ] T018 [US3] Update `renderPosts()` in `app/templates/dashboard/layout.html` to add `onclick` handler on thumbnail images that triggers the lightbox with the `data-full-url`
-- [ ] T019 [US3] Verify lightbox behavior: click thumbnail → overlay appears with full image; click outside → closes; Escape → closes; click image → stays open; mobile viewport → image scales correctly
+- [x] T015 [P] [US3] Add lightbox CSS classes in `app/static/css/app.css` — overlay (fixed, full-screen, dark semi-transparent), centered image container, rounded borders (`border-radius: 12px`), responsive max-width
+- [x] T016 [US3] Add lightbox HTML structure to `app/templates/dashboard/layout.html` — hidden `<div id="lightbox">` with overlay and `<img id="lightbox-img">`
+- [x] T017 [US3] Add lightbox JavaScript in `app/templates/dashboard/layout.html` — click handler on thumbnails reads `data-full-url`, sets `lightbox-img.src`, shows overlay; click-outside and Escape key handlers to close
+- [x] T018 [US3] Update `renderPosts()` in `app/templates/dashboard/layout.html` to add `onclick` handler on thumbnail images that triggers the lightbox with the `data-full-url`
+- [x] T019 [US3] Verify lightbox behavior: click thumbnail → overlay appears with full image; click outside → closes; Escape → closes; click image → stays open; mobile viewport → image scales correctly
 
 **Checkpoint**: All user stories are now independently functional. Thumbnails load fast, lightbox shows full-size images.
 
@@ -101,12 +101,12 @@ status: draft
 
 **Purpose**: Edge case handling, backward compatibility, and validation
 
-- [ ] T020 [P] Add fallback logic: if `thumbnail_key` is null (old post), use `full_image_url` for both display and lightbox in `app/dashboard/service.py`
-- [ ] T021 [P] Add error handling in `generate_thumbnail()` for non-image files — log warning and skip thumbnail generation gracefully
-- [ ] T022 [P] Add logging for thumbnail generation in `app/services/storage.py` — log original size, thumbnail size, and generation time
-- [ ] T023 Run `uv run alembic upgrade head` to apply the migration
-- [ ] T024 Run `uv run pytest tests/ -v` to verify no regressions
-- [ ] T025 Validate quickstart.md test flow manually (upload → verify thumbnails → test lightbox → check performance)
+- [x] T020 [P] Add fallback logic: if `thumbnail_key` is null (old post), use `full_image_url` for both display and lightbox in `app/dashboard/service.py`
+- [x] T021 [P] Add error handling in `generate_thumbnail()` for non-image files — log warning and skip thumbnail generation gracefully
+- [x] T022 [P] Add logging for thumbnail generation in `app/services/storage.py` — log original size, thumbnail size, and generation time
+- [x] T023 Run `uv run alembic upgrade head` to apply the migration
+- [x] T024 Run `uv run pytest tests/ -v` to verify no regressions
+- [x] T025 Validate quickstart.md test flow manually (upload → verify thumbnails → test lightbox → check performance)
 
 ---
 

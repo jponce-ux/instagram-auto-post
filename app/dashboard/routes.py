@@ -79,17 +79,23 @@ async def posts_feed(
 
     posts = await get_user_posts(db, user)
 
-    # Generate presigned URLs for each post's image
+    # Generate presigned URLs for each post's thumbnail and full-size image
     posts_data = []
     for post in posts:
-        image_url = await get_post_image_url(db, user, post)
-        posts_data.append({
+        image_urls = await get_post_image_url(db, user, post)
+        post_data = {
             "id": post.id,
             "caption": post.caption,
             "status": post.status.value,
             "created_at": post.created_at.isoformat(),
-            "image_url": image_url,
-        })
+        }
+        if image_urls:
+            post_data["thumbnail_url"] = image_urls["thumbnail_url"]
+            post_data["full_image_url"] = image_urls["full_image_url"]
+        else:
+            post_data["thumbnail_url"] = None
+            post_data["full_image_url"] = None
+        posts_data.append(post_data)
 
     return JSONResponse(
         content={"posts": posts_data}

@@ -30,19 +30,20 @@ async def get_user_posts(db: AsyncSession, user: User) -> list[Post]:
     return list(result.scalars().all())
 
 
-async def get_post_image_url(db: AsyncSession, user: User, post: Post) -> str | None:
-    """Generate a presigned URL for a post's image from the private MinIO bucket.
+async def get_post_image_url(db: AsyncSession, user: User, post: Post) -> dict | None:
+    """Generate presigned URLs for a post's thumbnail and full-size image.
 
-    Verifies that the user owns the media file before generating the URL.
+    Verifies that the user owns the media file before generating URLs.
     Returns None if the post has no associated media file.
 
     Args:
         db: AsyncSession for database operations
         user: The authenticated user (for ownership check)
-        post: The Post to get the image URL for
+        post: The Post to get the image URLs for
 
     Returns:
-        Presigned URL string or None if no image
+        Dict with 'thumbnail_url' and 'full_image_url', or None if no image.
+        If no thumbnail exists, thumbnail_url is None and full_image_url is used.
     """
     if not post.media_file_id:
         return None
@@ -57,11 +58,27 @@ async def get_post_image_url(db: AsyncSession, user: User, post: Post) -> str | 
     if not media_file:
         return None
 
+    full_image_url = None
+    thumbnail_url = None
+
     try:
-        return await storage_service.get_presigned_url(media_file.key, expires=3600)
+        full_image_url = await storage_service.get_presigned_url(media_file.key, expires=3600)
     except Exception as e:
         logger.warning(f"Failed to generate presigned URL for post {post.id}: {e}")
         return None
+
+    # Generate thumbnail URL if available
+    if media_file.thumbnail_key:
+        try:
+            thumbnail_url = await storage_service.get_presigned_url(media_file.thumbnail_key, expires=3600)
+        except Exception as e:
+            logger.warning(f"Failed to generate thumbnail URL for post {post.id}: {e}")
+            # Fall back to full image — don't fail the whole request
+
+    return {
+        "thumbnail_url": thumbnail_url,
+        "full_image_url": full_image_url,
+    }
 
 
 async def create_post(
@@ -74,19 +91,38 @@ async def create_post(
     Create a new post with image upload and immediately dispatch processing.
 
     1. Upload file to MinIO storage
-    2. Create MediaFile record
-    3. Create Post record with PENDING status and scheduled_at=now
-    4. Dispatch Celery task for immediate processing
-    5. Publish SSE event for real-time dashboard update
+    2. Generate and upload thumbnail (for image files)
+    3. Create MediaFile record with both original and thumbnail keys
+    4. Create Post record with PENDING status and scheduled_at=now
+    5. Dispatch Celery task for immediate processing
+    6. Publish SSE event for real-time dashboard update
     """
-    # Upload to MinIO — upload_file generates key as {user_id}/{uuid}.{ext}
+    # Read file content once for both upload and thumbnail generation
+    content = await file.read()
+    file.file.seek(0)
+
+    # Upload original to MinIO
     storage_key = await storage_service.upload_file(file, user.id)
 
-    # Create media file record
+    # Generate and upload thumbnail for image files
+    thumbnail_key = None
+    content_type = file.content_type or "application/octet-stream"
+    if content_type.startswith("image/"):
+        thumbnail_bytes = storage_service.generate_thumbnail(content, content_type)
+        if thumbnail_bytes:
+            thumbnail_key = await storage_service.upload_thumbnail(thumbnail_bytes, storage_key)
+            if thumbnail_key:
+                logger.info(
+                    f"Thumbnail generated for post upload: "
+                    f"{len(thumbnail_bytes)} bytes -> {thumbnail_key}"
+                )
+
+    # Create media file record with both keys
     media_file = MediaFile(
         key=storage_key,
+        thumbnail_key=thumbnail_key,
         original_filename=file.filename or "upload",
-        content_type=file.content_type or "application/octet-stream",
+        content_type=content_type,
         user_id=user.id,
     )
     db.add(media_file)
