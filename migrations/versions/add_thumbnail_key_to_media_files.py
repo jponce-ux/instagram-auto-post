@@ -14,7 +14,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = "add_thumbnail_key_to_media_files"
-down_revision: Union[str, None] = "add_is_verified_to_users"
+down_revision: Union[str, None] = "add_username_is_active_ig"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

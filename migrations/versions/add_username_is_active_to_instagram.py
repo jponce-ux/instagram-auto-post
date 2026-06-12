@@ -13,7 +13,7 @@ import sqlalchemy as sa
 
 
 revision: str = "add_username_is_active_ig"
-down_revision: Union[str, None] = "387251a18678"
+down_revision: Union[str, None] = "add_is_verified_to_users"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

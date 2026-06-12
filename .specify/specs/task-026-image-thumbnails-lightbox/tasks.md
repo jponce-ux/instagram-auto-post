@@ -3,7 +3,7 @@ ticket: TASK-026
 phase: tasks
 model: qwen3.6-plus
 generated: 2026-06-09
-status: draft
+status: completed
 ---
 
 # Tasks: Image Thumbnails and Lightbox Viewer
