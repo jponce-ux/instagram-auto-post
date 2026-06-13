@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, Request, Form, UploadFile, File, HTTPExc
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
+import re
 
 from app.core.database import get_db
 from app.auth.dependencies import get_current_user_optional
@@ -11,6 +12,35 @@ from app.services.sse import sse_manager, POST_UPDATE_CHANNEL
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 templates = Jinja2Templates(directory="app/templates")
+
+
+def _sanitize_error_message(error_msg: str) -> str:
+    """Remove sensitive data from error messages before showing to users.
+
+    Strips out tokens, internal paths, and technical details while keeping
+    the user-facing error description.
+    """
+    if not error_msg:
+        return ""
+
+    sanitized = error_msg
+    # Remove access tokens (long alphanumeric strings)
+    sanitized = re.sub(r'access_token[=:]\s*[A-Za-z0-9_-]{20,}', 'access_token=[REDACTED]', sanitized)
+    # Remove internal URLs with query params
+    sanitized = re.sub(r'(https?://[^\s]+\?)[^\s]+', r'\1[REDACTED]', sanitized)
+    # Remove Python tracebacks
+    if 'Traceback (most recent call last)' in sanitized:
+        sanitized = sanitized.split('Traceback')[0].strip()
+    # Remove Instagram API error codes/types but keep the message
+    sanitized = re.sub(r'Instagram API error \d+: \w+ — ', '', sanitized)
+    # Remove common internal error patterns
+    sanitized = re.sub(r'Failed to (create media container|publish media): ', '', sanitized)
+
+    # Truncate if too long
+    if len(sanitized) > 200:
+        sanitized = sanitized[:197] + "..."
+
+    return sanitized
 
 
 @router.get("/")
@@ -71,7 +101,8 @@ async def posts_feed(
 ):
     """Post history feed — returns JSON for initial load and fallback.
 
-    Includes presigned image URLs for each post's thumbnail.
+    Includes presigned image URLs for each post's thumbnail and error messages
+    for failed/retrying posts (sanitized to remove sensitive data).
     """
     user = await get_current_user_optional(request, db)
     if user is None:
@@ -95,6 +126,13 @@ async def posts_feed(
         else:
             post_data["thumbnail_url"] = None
             post_data["full_image_url"] = None
+
+        # Include error message for failed/retrying posts (sanitized)
+        if post.status.value in ("failed", "retrying") and post.error_message:
+            post_data["error_message"] = _sanitize_error_message(post.error_message)
+        else:
+            post_data["error_message"] = None
+
         posts_data.append(post_data)
 
     return JSONResponse(

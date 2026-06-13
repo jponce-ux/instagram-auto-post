@@ -26,7 +26,36 @@ _sse_redis = redis.Redis.from_url(settings.CELERY_BROKER_URL, decode_responses=T
 _SSE_CHANNEL = "post_update"
 
 
-def _publish_post_event(post_id: int, status: str, user_id: int) -> None:
+def _sanitize_error_message(error_msg: str) -> str:
+    """Remove sensitive data from error messages before showing to users.
+
+    Strips out tokens, internal paths, and technical details while keeping
+    the user-facing error description.
+    """
+    if not error_msg:
+        return ""
+
+    # Remove common sensitive patterns
+    sanitized = error_msg
+    # Remove access tokens (long alphanumeric strings)
+    import re
+    sanitized = re.sub(r'access_token[=:]\s*[A-Za-z0-9_-]{20,}', 'access_token=[REDACTED]', sanitized)
+    # Remove internal URLs with query params
+    sanitized = re.sub(r'(https?://[^\s]+\?)[^\s]+', r'\1[REDACTED]', sanitized)
+    # Remove Python tracebacks
+    if 'Traceback (most recent call last)' in sanitized:
+        sanitized = sanitized.split('Traceback')[0].strip()
+    # Remove Instagram API error codes/types but keep the message
+    sanitized = re.sub(r'Instagram API error \d+: \w+ — ', '', sanitized)
+
+    # Truncate if too long
+    if len(sanitized) > 200:
+        sanitized = sanitized[:197] + "..."
+
+    return sanitized
+
+
+def _publish_post_event(post_id: int, status: str, user_id: int, error_message: str = "") -> None:
     """Publish a post status change event to Redis for SSE streaming.
 
     Fire-and-forget: failures are logged but don't affect post processing.
@@ -37,6 +66,7 @@ def _publish_post_event(post_id: int, status: str, user_id: int) -> None:
             "post_id": post_id,
             "status": status,
             "user_id": user_id,
+            "error_message": _sanitize_error_message(error_message) if error_message else "",
         })
         _sse_redis.publish(_SSE_CHANNEL, event)
         logger.debug(f"SSE event published: post_id={post_id}, status={status}")
@@ -296,28 +326,30 @@ def process_instagram_post(self, post_id: int) -> str:
         if retry_count < 3:
             # Mark as RETRYING so dashboard shows "reintentando..."
             # instead of "fallido" while retries are pending
+            error_msg = str(exc)
             with SyncSessionLocal() as db:
                 result = db.execute(select(Post).where(Post.id == post_id))
                 post = result.scalar_one_or_none()
                 if post:
                     post.status = PostStatus.RETRYING
-                    post.error_message = str(exc)
+                    post.error_message = error_msg
                     db.commit()
-                    _publish_post_event(post.id, "retrying", post.user_id)
+                    _publish_post_event(post.id, "retrying", post.user_id, error_msg)
 
             # Exponential backoff: 60s, 120s, 240s
             countdown = 60 * (2**retry_count)
             raise self.retry(exc=exc, countdown=countdown)
         else:
             # All retries exhausted — mark as FAILED
+            error_msg = str(exc)
             with SyncSessionLocal() as db:
                 result = db.execute(select(Post).where(Post.id == post_id))
                 post = result.scalar_one_or_none()
                 if post:
                     post.status = PostStatus.FAILED
-                    post.error_message = str(exc)
+                    post.error_message = error_msg
                     db.commit()
-                    _publish_post_event(post.id, "failed", post.user_id)
+                    _publish_post_event(post.id, "failed", post.user_id, error_msg)
             raise
 
 
