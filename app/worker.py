@@ -152,6 +152,13 @@ def _process_post_sync(post_id: int) -> None:
     from sqlalchemy import select
     from sqlalchemy.sql import func
 
+    # Timeout for async operations (prevent indefinite hangs)
+    ASYNC_TIMEOUT = 60  # seconds
+
+    def _run_with_timeout(coro):
+        """Run async coroutine with timeout to prevent indefinite hangs."""
+        return asyncio.run(asyncio.wait_for(coro, timeout=ASYNC_TIMEOUT))
+
     with SyncSessionLocal() as db:
         try:
             # Step 1: Fetch Post with related data
@@ -174,15 +181,15 @@ def _process_post_sync(post_id: int) -> None:
             db.commit()
 
             # Step 3: Ensure public bucket exists with correct policy, then copy file
-            asyncio.run(storage_service.ensure_bucket_exists())
-            asyncio.run(storage_service.copy_to_public_bucket(media_file.key))
+            _run_with_timeout(storage_service.ensure_bucket_exists())
+            _run_with_timeout(storage_service.copy_to_public_bucket(media_file.key))
 
             # Step 4: Generate public URL (no auth params, Instagram can access)
-            media_url = asyncio.run(storage_service.get_public_url(media_file.key))
+            media_url = _run_with_timeout(storage_service.get_public_url(media_file.key))
 
             # Step 5: Create media container
             try:
-                container_id = asyncio.run(create_media_container(
+                container_id = _run_with_timeout(create_media_container(
                     ig_account_id=ig_account.instagram_account_id,
                     access_token=ig_account.access_token,
                     media_url=media_url,
@@ -204,7 +211,7 @@ def _process_post_sync(post_id: int) -> None:
             elapsed = 0
 
             while elapsed < max_wait:
-                status_data = asyncio.run(get_container_status(
+                status_data = _run_with_timeout(get_container_status(
                     container_id=container_id,
                     access_token=ig_account.access_token,
                 ))
@@ -225,7 +232,7 @@ def _process_post_sync(post_id: int) -> None:
 
             # Step 7: Publish media container
             try:
-                media_id = asyncio.run(publish_media_container(
+                media_id = _run_with_timeout(publish_media_container(
                     ig_account_id=ig_account.instagram_account_id,
                     access_token=ig_account.access_token,
                     container_id=container_id,
@@ -252,7 +259,7 @@ def _process_post_sync(post_id: int) -> None:
 
             # Cleanup: delete from public bucket (non-critical)
             try:
-                asyncio.run(storage_service.delete_from_public_bucket(media_file.key))
+                _run_with_timeout(storage_service.delete_from_public_bucket(media_file.key))
             except Exception:
                 pass
 

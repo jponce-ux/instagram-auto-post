@@ -4,9 +4,12 @@ from app.core.config import settings
 META_API_BASE = "https://graph.instagram.com/v21.0"
 INSTAGRAM_OAUTH_BASE = "https://api.instagram.com/oauth"
 
+# Timeout for all Meta API requests (connect, read, write, pool)
+API_TIMEOUT = httpx.Timeout(30.0, connect=10.0)
+
 
 async def exchange_short_token(code: str, redirect_uri: str) -> dict:
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=API_TIMEOUT) as client:
         response = await client.post(
             f"{INSTAGRAM_OAUTH_BASE}/access_token",
             data={
@@ -22,7 +25,7 @@ async def exchange_short_token(code: str, redirect_uri: str) -> dict:
 
 
 async def get_long_lived_token(short_token: str) -> dict:
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=API_TIMEOUT) as client:
         response = await client.get(
             "https://graph.instagram.com/access_token",
             params={
@@ -41,7 +44,7 @@ async def get_instagram_account_id(access_token: str) -> tuple[str, str]:
     Returns:
         tuple of (instagram_user_id, username)
     """
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=API_TIMEOUT) as client:
         response = await client.get(
             "https://graph.instagram.com/v25.0/me",
             params={
@@ -73,7 +76,7 @@ async def create_media_container(
     Raises:
         Exception: If the API request fails, with Instagram error details
     """
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=API_TIMEOUT) as client:
         response = await client.post(
             f"{META_API_BASE}/{ig_account_id}/media",
             params={
@@ -107,7 +110,7 @@ async def get_container_status(container_id: str, access_token: str) -> dict:
     Raises:
         httpx.HTTPError: If the API request fails
     """
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=API_TIMEOUT) as client:
         response = await client.get(
             f"{META_API_BASE}/{container_id}",
             params={
@@ -131,7 +134,7 @@ async def publish_media_container(
     Raises:
         Exception: If the API request fails, with Instagram error details
     """
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=API_TIMEOUT) as client:
         response = await client.post(
             f"{META_API_BASE}/{ig_account_id}/media_publish",
             params={
