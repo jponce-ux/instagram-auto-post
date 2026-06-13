@@ -1,7 +1,7 @@
 # TASK-026: Image Thumbnails and Lightbox Viewer — COMPLETED
 
 **Completed**: 2026-06-12
-**Status**: ✅ All 25/25 tasks complete, migration applied, backfill done, tests passing
+**Status**: ✅ All 25/25 tasks complete, migration applied, backfill done, orphans cleaned, tests passing
 
 ---
 
@@ -15,7 +15,13 @@
 ### Backfill Results
 - 17 media files found without thumbnails
 - **10 succeeded** — thumbnails generated and stored in MinIO
-- **7 failed** — original files no longer exist in MinIO (old test data, safe to ignore)
+- **7 failed** — original files no longer exist in MinIO (old test data)
+
+### Orphan Cleanup
+- Created `scripts/cleanup_orphaned_media.py` to detect and remove orphaned records
+- Deleted 7 orphaned MediaFile records (IDs 3-9) with missing originals
+- Each orphaned record had 1 associated Post (also deleted)
+- Database now has **11 healthy media files** and **11 posts**
 
 ### Tests
 - **90/90 passing** — zero regressions
@@ -30,6 +36,7 @@
 - `migrations/versions/add_thumbnail_key_to_media_files.py` — Migration file
 - `migrations/versions/add_username_is_active_to_instagram.py` — Fixed broken `down_revision`
 - `scripts/backfill_thumbnails.py` — Backfill script for existing media files
+- `scripts/cleanup_orphaned_media.py` — Cleanup script for orphaned records
 - `pyproject.toml` / `uv.lock` — Pillow 12.2.0 added
 
 ---
@@ -37,8 +44,10 @@
 ## Git State
 
 - **Branch**: `main`
-- **Last commit**: `e53e47a` — `feat(026): image thumbnails and lightbox viewer`
-- **Uncommitted changes**: tasks.md status update, progress file update
+- **Commits**:
+  - `e53e47a` — `feat(026): image thumbnails and lightbox viewer`
+  - `7d71d55` — `docs: mark TASK-026 as completed, update progress`
+  - `21dce10` — `feat(026): add cleanup script for orphaned media, remove 7 orphaned records`
 
 ---
 
@@ -46,9 +55,11 @@
 
 - [x] Migration applied (`thumbnail_key` column exists in `media_files` table)
 - [x] Backfill script ran (10/17 existing images got thumbnails)
+- [x] Orphan cleanup ran (7 orphaned records removed)
 - [x] 90/90 tests passing
 - [x] New uploads will automatically generate thumbnails
 - [x] Dashboard shows thumbnails in history table
 - [x] Lightbox viewer implemented (click thumbnail → full-size overlay)
 - [x] Lightbox closes on click-outside or Escape key
 - [x] Backward compatible (old posts without thumbnails fall back to full-size)
+- [x] Database is clean (no orphaned records)
