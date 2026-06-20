@@ -78,6 +78,10 @@ async def instagram_callback(
             existing_account.access_token = long_token
             existing_account.token_expires_at = token_expires_at
             existing_account.username = ig_username or existing_account.username
+            # Reactivate account if it was deactivated due to token expiry
+            if not existing_account.is_active:
+                existing_account.is_active = True
+                logger.info(f"Instagram account {existing_account.id} reactivated after OAuth reconnection")
         else:
             instagram_account = InstagramAccount(
                 user_id=current_user.id,

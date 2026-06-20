@@ -29,6 +29,9 @@ logger = logging.getLogger(__name__)
 # Redis channel for post status updates
 POST_UPDATE_CHANNEL = "post_update"
 
+# Redis channel for account status updates (token expiry, reconnection)
+ACCOUNT_UPDATE_CHANNEL = "account_update"
+
 
 class SSEManager:
     """Manages SSE connections via Redis pub/sub."""

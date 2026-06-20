@@ -55,6 +55,39 @@ def _sanitize_error_message(error_msg: str) -> str:
     return sanitized
 
 
+def _is_token_error(error_msg: str) -> bool:
+    """Detect if an error message indicates a token expiry/invalidation.
+
+    Checks for:
+    - Instagram Graph API error codes 463, 467 (token expired/invalid)
+    - OAuthException patterns
+    - Existing "token expired" string matching
+    - "invalid" + "token" combinations
+    """
+    if not error_msg:
+        return False
+
+    msg_lower = error_msg.lower()
+
+    # Explicit error codes
+    if "463" in error_msg or "467" in error_msg:
+        return True
+
+    # OAuth exception patterns
+    if "oauthexception" in msg_lower:
+        return True
+
+    # Existing string match from TASK-027
+    if "token expired" in msg_lower:
+        return True
+
+    # Token + invalid combination
+    if "token" in msg_lower and ("invalid" in msg_lower or "expired" in msg_lower):
+        return True
+
+    return False
+
+
 def _publish_post_event(post_id: int, status: str, user_id: int, error_message: str = "") -> None:
     """Publish a post status change event to Redis for SSE streaming.
 
@@ -74,6 +107,25 @@ def _publish_post_event(post_id: int, status: str, user_id: int, error_message: 
         logger.warning(f"Failed to publish SSE event for post {post_id}: {e}")
 
 
+def _publish_account_event(account_id: int, is_active: bool, reason: str, user_id: int = 0) -> None:
+    """Publish an account status change event to Redis for SSE streaming.
+
+    Fire-and-forget: failures are logged but don't affect post processing.
+    Sync version for use in Celery tasks.
+    """
+    try:
+        event = json.dumps({
+            "account_id": account_id,
+            "is_active": is_active,
+            "reason": reason,
+            "user_id": user_id,
+        })
+        _sse_redis.publish("account_update", event)
+        logger.debug(f"SSE account event published: account_id={account_id}, is_active={is_active}")
+    except Exception as e:
+        logger.warning(f"Failed to publish SSE account event for account {account_id}: {e}")
+
+
 celery_app = Celery(
     "worker",
     broker=settings.CELERY_BROKER_URL,
@@ -91,6 +143,10 @@ celery_app.conf.update(
 celery_app.conf.beat_schedule = {
     "check-scheduled-posts": {
         "task": "app.worker.check_scheduled_posts",
+        "schedule": timedelta(seconds=60),
+    },
+    "check-stalled-posts": {
+        "task": "app.worker.check_stalled_posts",
         "schedule": timedelta(seconds=60),
     },
 }
@@ -134,6 +190,7 @@ def check_scheduled_posts(self) -> dict:
             for post in posts:
                 try:
                     post.status = PostStatus.PROCESSING
+                    post.processing_started_at = datetime.now(timezone.utc)
                     session.commit()
                     process_instagram_post.delay(post.id)
                     _publish_post_event(post.id, "processing", post.user_id)
@@ -154,6 +211,119 @@ def check_scheduled_posts(self) -> dict:
     except Exception as e:
         logger.error(f"Beat task failed: {e}")
         return {"error": str(e), "found": 0, "dispatched": 0}
+
+
+@celery_app.task(bind=True, max_retries=0)
+def check_stalled_posts(self) -> dict:
+    """
+    Beat task: detect posts stuck in processing or retrying state and mark them as failed.
+
+    Runs every 60 seconds via Celery Beat. Finds posts where:
+    - status='processing' AND processing_started_at < NOW() - 15 minutes
+    - status='retrying' AND processing_started_at < NOW() - 5 minutes
+
+    Transitions them to FAILED with appropriate error message and publishes SSE events.
+    """
+    from datetime import datetime, timedelta, timezone
+    from sqlalchemy import select
+
+    stalled_count = 0
+
+    def _find_and_fail_stalled():
+        nonlocal stalled_count
+        now = datetime.now(timezone.utc)
+        processing_timeout = now - timedelta(minutes=15)
+        retrying_timeout = now - timedelta(minutes=5)
+
+        with SyncSessionLocal() as session:
+            # Find stalled processing posts
+            stmt_processing = (
+                select(Post)
+                .where(
+                    Post.status == PostStatus.PROCESSING,
+                    Post.processing_started_at != None,
+                    Post.processing_started_at < processing_timeout,
+                )
+            )
+            stalled_processing = session.execute(stmt_processing).scalars().all()
+
+            for post in stalled_processing:
+                try:
+                    post.status = PostStatus.FAILED
+                    post.processing_started_at = None
+                    post.error_message = "Processing timeout exceeded"
+                    session.commit()
+                    _publish_post_event(
+                        post.id, "failed", post.user_id, "Processing timeout exceeded"
+                    )
+                    stalled_count += 1
+                    logger.info(f"Marked post {post.id} as failed: processing timeout")
+                except Exception as e:
+                    session.rollback()
+                    logger.error(f"Failed to mark post {post.id} as failed: {e}")
+
+            # Find stalled retrying posts
+            stmt_retrying = (
+                select(Post)
+                .where(
+                    Post.status == PostStatus.RETRYING,
+                    Post.processing_started_at != None,
+                    Post.processing_started_at < retrying_timeout,
+                )
+            )
+            stalled_retrying = session.execute(stmt_retrying).scalars().all()
+
+            for post in stalled_retrying:
+                try:
+                    post.status = PostStatus.FAILED
+                    post.processing_started_at = None
+                    post.error_message = "Retry timeout exceeded"
+                    session.commit()
+                    _publish_post_event(
+                        post.id, "failed", post.user_id, "Retry timeout exceeded"
+                    )
+                    stalled_count += 1
+                    logger.info(f"Marked post {post.id} as failed: retry timeout")
+                except Exception as e:
+                    session.rollback()
+                    logger.error(f"Failed to mark post {post.id} as failed: {e}")
+
+            # Fallback: posts with NULL processing_started_at in processing/retrying state
+            # Use created_at as fallback for pre-migration posts
+            fallback_timeout = now - timedelta(minutes=15)
+            stmt_fallback = (
+                select(Post)
+                .where(
+                    Post.status == PostStatus.PROCESSING,
+                    Post.processing_started_at == None,
+                    Post.created_at < fallback_timeout,
+                )
+            )
+            fallback_posts = session.execute(stmt_fallback).scalars().all()
+
+            for post in fallback_posts:
+                try:
+                    post.status = PostStatus.FAILED
+                    post.error_message = "Processing timeout exceeded"
+                    session.commit()
+                    _publish_post_event(
+                        post.id, "failed", post.user_id, "Processing timeout exceeded"
+                    )
+                    stalled_count += 1
+                    logger.info(f"Marked post {post.id} as failed: processing timeout (fallback)")
+                except Exception as e:
+                    session.rollback()
+                    logger.error(f"Failed to mark post {post.id} as failed: {e}")
+
+            return stalled_count
+
+    try:
+        _find_and_fail_stalled()
+        logger.info(f"Stalled post check complete: {stalled_count} posts marked as failed")
+        return {"stalled": stalled_count, "error": None}
+    except Exception as e:
+        logger.error(f"Stalled post check failed: {e}")
+        return {"error": str(e), "stalled": 0}
 
 
 def _process_post_sync(post_id: int) -> None:
@@ -181,6 +351,7 @@ def _process_post_sync(post_id: int) -> None:
     """
     from sqlalchemy import select
     from sqlalchemy.sql import func
+    from datetime import datetime, timezone
 
     # Timeout for async operations (prevent indefinite hangs)
     ASYNC_TIMEOUT = 60  # seconds
@@ -207,6 +378,7 @@ def _process_post_sync(post_id: int) -> None:
 
             # Step 2: Update status to PROCESSING, clear any previous error
             post.status = PostStatus.PROCESSING
+            post.processing_started_at = datetime.now(timezone.utc)
             post.error_message = None
             db.commit()
 
@@ -229,10 +401,22 @@ def _process_post_sync(post_id: int) -> None:
                 db.commit()
             except Exception as e:
                 error_msg = str(e)
-                if "token" in error_msg.lower() and ("expired" in error_msg.lower() or "invalid" in error_msg.lower()):
+                if _is_token_error(error_msg):
                     error_msg = (
                         "Token expired - please reconnect your Instagram account"
                     )
+                    # Deactivate the account so dashboard shows "Inactiva"
+                    try:
+                        from app.dashboard.service import deactivate_account_sync
+                        deactivate_account_sync(ig_account.id)
+                        _publish_account_event(
+                            account_id=ig_account.id,
+                            is_active=False,
+                            reason="token_expired",
+                            user_id=post.user_id,
+                        )
+                    except Exception as deact_err:
+                        logger.error(f"Failed to deactivate account {ig_account.id}: {deact_err}")
                 raise Exception(f"Failed to create media container: {error_msg}")
 
             # Step 6: Poll container status (max 30s, every 2s)
@@ -279,6 +463,7 @@ def _process_post_sync(post_id: int) -> None:
             # to download the image. Cleanup happens when the webhook confirms
             # the post is live on the feed (see webhooks/meta.py).
             post.status = PostStatus.PUBLISHED
+            post.processing_started_at = None
             post.published_at = func.now()
             db.commit()
             _publish_post_event(post.id, "published", post.user_id)
@@ -323,6 +508,9 @@ def process_instagram_post(self, post_id: int) -> str:
         _process_post_sync(post_id)
         return f"Post {post_id} processed successfully"
     except Exception as exc:
+        from sqlalchemy import select
+        from datetime import datetime, timezone
+
         if retry_count < 3:
             # Mark as RETRYING so dashboard shows "reintentando..."
             # instead of "fallido" while retries are pending
@@ -332,9 +520,22 @@ def process_instagram_post(self, post_id: int) -> str:
                 post = result.scalar_one_or_none()
                 if post:
                     post.status = PostStatus.RETRYING
+                    post.processing_started_at = datetime.now(timezone.utc)
                     post.error_message = error_msg
                     db.commit()
                     _publish_post_event(post.id, "retrying", post.user_id, error_msg)
+
+                    # Also publish account event if token expiry detected
+                    if _is_token_error(error_msg):
+                        from app.dashboard.service import deactivate_account_sync
+                        # Account may already be deactivated in _process_post_sync,
+                        # but publish SSE event as safety net
+                        _publish_account_event(
+                            account_id=post.ig_account_id,
+                            is_active=False,
+                            reason="token_expired",
+                            user_id=post.user_id,
+                        )
 
             # Exponential backoff: 60s, 120s, 240s
             countdown = 60 * (2**retry_count)
@@ -347,9 +548,19 @@ def process_instagram_post(self, post_id: int) -> str:
                 post = result.scalar_one_or_none()
                 if post:
                     post.status = PostStatus.FAILED
+                    post.processing_started_at = None
                     post.error_message = error_msg
                     db.commit()
                     _publish_post_event(post.id, "failed", post.user_id, error_msg)
+
+                    # Publish account event if token expiry caused the failure
+                    if _is_token_error(error_msg):
+                        _publish_account_event(
+                            account_id=post.ig_account_id,
+                            is_active=False,
+                            reason="token_expired",
+                            user_id=post.user_id,
+                        )
             raise
 
 

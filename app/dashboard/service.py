@@ -81,6 +81,108 @@ async def get_post_image_url(db: AsyncSession, user: User, post: Post) -> dict |
     }
 
 
+async def deactivate_account(db: AsyncSession, account_id: int) -> None:
+    """Deactivate an Instagram account (set is_active=False).
+
+    Called when token expiry is detected during post processing.
+    """
+    result = await db.execute(
+        select(InstagramAccount).where(InstagramAccount.id == account_id)
+    )
+    account = result.scalar_one_or_none()
+    if account:
+        account.is_active = False
+        await db.commit()
+        logger.info(f"Instagram account {account_id} deactivated due to token expiry")
+
+
+def deactivate_account_sync(account_id: int) -> bool:
+    """Deactivate an Instagram account (sync version for Celery worker).
+
+    Returns True if account was found and deactivated, False otherwise.
+    """
+    from app.core.database import SyncSessionLocal
+
+    with SyncSessionLocal() as session:
+        result = session.execute(
+            select(InstagramAccount).where(InstagramAccount.id == account_id)
+        )
+        account = result.scalar_one_or_none()
+        if account:
+            account.is_active = False
+            session.commit()
+            logger.info(f"Instagram account {account_id} deactivated due to token expiry")
+            return True
+        logger.warning(f"Cannot deactivate account {account_id}: not found")
+        return False
+
+
+async def retry_post(db: AsyncSession, user: User, post_id: int) -> Post:
+    """Retry a failed post by re-dispatching it to the Celery worker.
+
+    Verifies:
+    - User owns the post
+    - Post is in FAILED state
+    - Associated Instagram account is active
+
+    Returns the updated Post with status set to PROCESSING.
+    Raises ValueError on validation failures.
+    """
+    result = await db.execute(
+        select(Post).where(
+            Post.id == post_id,
+            Post.user_id == user.id,
+        )
+    )
+    post = result.scalar_one_or_none()
+    if not post:
+        raise ValueError("Post not found")
+
+    if post.status != PostStatus.FAILED:
+        raise ValueError(f"Post is not in a failed state. Current status: {post.status.value}")
+
+    # Verify the associated Instagram account is active
+    ig_result = await db.execute(
+        select(InstagramAccount).where(
+            InstagramAccount.id == post.ig_account_id,
+            InstagramAccount.user_id == user.id,
+        )
+    )
+    ig_account = ig_result.scalar_one_or_none()
+    if not ig_account:
+        raise ValueError("Instagram account not found")
+    if not ig_account.is_active:
+        raise ValueError("Instagram account is inactive. Please reconnect your account.")
+
+    # Transition to PROCESSING
+    post.status = PostStatus.PROCESSING
+    post.processing_started_at = datetime.now(timezone.utc)
+    post.error_message = None
+    await db.commit()
+    await db.refresh(post)
+
+    # Dispatch Celery task
+    try:
+        from app.worker import process_instagram_post
+        process_instagram_post.delay(post.id)
+        logger.info(f"Retried post {post.id} for processing")
+    except Exception as e:
+        logger.warning(f"Failed to dispatch retry for post {post.id}: {e}")
+
+    # Publish SSE event
+    try:
+        from app.services.sse import sse_manager, POST_UPDATE_CHANNEL
+        await sse_manager.publish(POST_UPDATE_CHANNEL, {
+            "post_id": post.id,
+            "status": "processing",
+            "user_id": user.id,
+        })
+    except Exception as e:
+        logger.warning(f"Failed to publish SSE event for retry post {post.id}: {e}")
+
+    return post
+
+
 async def create_post(
     db: AsyncSession,
     user: User,
@@ -132,7 +234,13 @@ async def create_post(
     accounts = await get_user_accounts(db, user)
     if not accounts:
         raise ValueError("No Instagram account connected. Connect an account before creating posts.")
-    ig_account_id = accounts[0].id
+
+    # Check if the account is active (not deactivated due to token expiry)
+    active_accounts = [acc for acc in accounts if acc.is_active]
+    if not active_accounts:
+        raise ValueError("Instagram account is inactive. Please reconnect your account.")
+
+    ig_account_id = active_accounts[0].id
 
     # Create post record with scheduled_at=now so beat task can pick it up
     post = Post(
@@ -148,6 +256,7 @@ async def create_post(
     await db.refresh(post)
 
     # Dispatch Celery task for immediate processing (don't wait for beat cycle)
+    post.processing_started_at = datetime.now(timezone.utc)
     try:
         from app.worker import process_instagram_post
         process_instagram_post.delay(post.id)

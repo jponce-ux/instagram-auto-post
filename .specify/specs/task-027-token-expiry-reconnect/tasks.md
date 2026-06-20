@@ -22,7 +22,7 @@ status: draft
 
 **Purpose**: Add SSE channel constant for account updates
 
-- [ ] T001 [P] Add `ACCOUNT_UPDATE_CHANNEL = "account_update"` constant in `app/services/sse.py`
+- [x] T001 [P] Add `ACCOUNT_UPDATE_CHANNEL = "account_update"` constant in `app/services/sse.py`
 
 ---
 
@@ -34,10 +34,10 @@ status: draft
 
 ### Implementation for User Story 1
 
-- [ ] T002 [US1] Add `deactivate_account(account_id)` function in `app/dashboard/service.py` — sets `is_active=False` and commits
-- [ ] T003 [US1] Modify `_process_post_sync()` in `app/worker.py` — when error message contains "Token expired", call `deactivate_account()` before raising the exception
-- [ ] T004 [US1] Add `_publish_account_event(account_id, is_active, reason)` function in `app/worker.py` — publishes SSE event via Redis
-- [ ] T005 [US1] Call `_publish_account_event()` in `process_instagram_post()` task wrapper when token expiry is detected (both on retry and final failure)
+- [x] T002 [US1] Add `deactivate_account(account_id)` function in `app/dashboard/service.py` — sets `is_active=False` and commits
+- [x] T003 [US1] Modify `_process_post_sync()` in `app/worker.py` — when error message contains "Token expired", call `deactivate_account()` before raising the exception
+- [x] T004 [US1] Add `_publish_account_event(account_id, is_active, reason)` function in `app/worker.py` — publishes SSE event via Redis
+- [x] T005 [US1] Call `_publish_account_event()` in `process_instagram_post()` task wrapper when token expiry is detected (both on retry and final failure)
 
 **Checkpoint**: Account is automatically deactivated when token expires, and an SSE event is published.
 
@@ -51,10 +51,10 @@ status: draft
 
 ### Implementation for User Story 2
 
-- [ ] T006 [P] [US2] Modify `renderAccounts()` in `app/templates/dashboard/layout.html` — show "Inactiva" badge with "Reconectar" button when `account.is_active` is false
-- [ ] T007 [P] [US2] Modify `app/templates/dashboard/accounts_partial.html` — show "Inactiva" badge with "Reconectar" button for server-rendered fallback
-- [ ] T008 [US2] Add `reconnect_account()` endpoint in `app/dashboard/routes.py` — POST handler that redirects to `/auth/instagram/login`
-- [ ] T009 [US2] Modify `instagram_callback()` in `app/auth/instagram.py` — set `is_active=True` when updating an existing account's token
+- [x] T006 [P] [US2] Modify `renderAccounts()` in `app/templates/dashboard/layout.html` — show "Inactiva" badge with "Reconectar" button when `account.is_active` is false
+- [x] T007 [P] [US2] Modify `app/templates/dashboard/accounts_partial.html` — show "Inactiva" badge with "Reconectar" button for server-rendered fallback
+- [x] T008 [US2] Add `reconnect_account()` endpoint in `app/dashboard/routes.py` — POST handler that redirects to `/auth/instagram/login`
+- [x] T009 [US2] Modify `instagram_callback()` in `app/auth/instagram.py` — set `is_active=True` when updating an existing account's token
 
 **Checkpoint**: Inactive accounts show a reconnect button that triggers the OAuth flow.
 
@@ -68,8 +68,8 @@ status: draft
 
 ### Implementation for User Story 3
 
-- [ ] T010 [US3] Add SSE event listener in `app/templates/dashboard/layout.html` — listen for `account_update` events and update account status badge + reconnect button
-- [ ] T011 [US3] Modify `loadAccounts()` in `app/templates/dashboard/layout.html` — re-fetch accounts on SSE account_update event and re-render
+- [x] T010 [US3] Add SSE event listener in `app/templates/dashboard/layout.html` — listen for `account_update` events and update account status badge + reconnect button
+- [x] T011 [US3] Modify `loadAccounts()` in `app/templates/dashboard/layout.html` — re-fetch accounts on SSE account_update event and re-render
 
 **Checkpoint**: Dashboard reflects account status changes in real-time via SSE.
 
@@ -79,9 +79,9 @@ status: draft
 
 **Purpose**: Edge case handling, validation, and testing
 
-- [ ] T012 [P] Add `is_active` check in `create_post_endpoint()` in `app/dashboard/routes.py` — return 400 error if account is inactive before dispatching task
-- [ ] T013 [P] Add `is_active` check in `create_post()` in `app/dashboard/service.py` — raise ValueError if no active accounts
-- [ ] T014 Run `uv run pytest tests/ -v` to verify no regressions
+- [x] T012 [P] Add `is_active` check in `create_post_endpoint()` in `app/dashboard/routes.py` — return 400 error if account is inactive before dispatching task
+- [x] T013 [P] Add `is_active` check in `create_post()` in `app/dashboard/service.py` — raise ValueError if no active accounts
+- [x] T014 Run `uv run pytest tests/ -v` to verify no regressions
 - [ ] T015 Manual verification: test full flow (expire token → deactivate → reconnect → reactivate)
 
 ---

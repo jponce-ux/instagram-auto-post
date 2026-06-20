@@ -9,13 +9,24 @@
                 </svg>
             </div>
             <div>
-                <p class="text-sm font-medium text-gray-900">{{ account.instagram_account_id }}</p>
-                <p class="text-xs text-gray-500">Conectada</p>
+                <p class="text-sm font-medium text-gray-900">{{ account.username or account.instagram_account_id }}</p>
+                <p class="text-xs text-gray-500">{{ 'Conectada' if account.is_active else 'Token expirado' }}</p>
             </div>
         </div>
-        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-            Activa
-        </span>
+        <div class="flex items-center space-x-2">
+            {% if account.is_active %}
+            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                Activa
+            </span>
+            {% else %}
+            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                Inactiva
+            </span>
+            <form method="POST" action="/dashboard/accounts/reconnect" class="inline">
+                <button type="submit" class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800 hover:bg-purple-200 transition-colors">Reconectar</button>
+            </form>
+            {% endif %}
+        </div>
     </div>
     {% endfor %}
 </div>

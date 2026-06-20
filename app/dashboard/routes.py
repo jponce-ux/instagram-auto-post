@@ -3,12 +3,15 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Stre
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
 import re
+import logging
+
+logger = logging.getLogger(__name__)
 
 from app.core.database import get_db
 from app.auth.dependencies import get_current_user_optional
 from app.models.user import User
-from app.dashboard.service import get_user_accounts, get_user_posts, create_post, get_post_image_url
-from app.services.sse import sse_manager, POST_UPDATE_CHANNEL
+from app.dashboard.service import get_user_accounts, get_user_posts, create_post, get_post_image_url, retry_post
+from app.services.sse import sse_manager, POST_UPDATE_CHANNEL, ACCOUNT_UPDATE_CHANNEL
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 templates = Jinja2Templates(directory="app/templates")
@@ -145,32 +148,55 @@ async def posts_stream(
     request: Request,
     db: AsyncSession = Depends(get_db),
 ):
-    """Server-Sent Events stream for real-time post status updates.
+    """Server-Sent Events stream for real-time post and account status updates.
 
-    Subscribes to Redis pub/sub channel and forwards events to the client.
-    Filters events to only include posts belonging to the authenticated user.
+    Subscribes to Redis pub/sub channels (post_update + account_update)
+    and forwards events to the client. Filters events to only include
+    items belonging to the authenticated user.
     Sends heartbeats every 15 seconds to keep the connection alive.
     """
     user = await get_current_user_optional(request, db)
     if user is None:
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
 
+    import asyncio
+
+    queue: asyncio.Queue = asyncio.Queue()
+
+    async def forward_events(channel_name: str) -> None:
+        """Subscribe to a channel and put filtered events into the queue."""
+        try:
+            async for event in sse_manager.subscribe(channel_name):
+                if event.startswith(":heartbeat"):
+                    await queue.put(event)
+                    continue
+                try:
+                    data_line = event.split("data: ")[1].strip()
+                    event_data = __import__("json").loads(data_line)
+                    if event_data.get("user_id") == user.id:
+                        await queue.put(event)
+                except Exception:
+                    await queue.put(event)
+        except asyncio.CancelledError:
+            pass
+
+    # Start both channel subscribers as background tasks
+    post_task = asyncio.create_task(forward_events(POST_UPDATE_CHANNEL))
+    account_task = asyncio.create_task(forward_events(ACCOUNT_UPDATE_CHANNEL))
+
     async def event_generator():
-        async for event in sse_manager.subscribe(POST_UPDATE_CHANNEL):
-            # Filter: only forward events for this user
-            if event.startswith(":heartbeat"):
-                yield event
-                continue
-            try:
-                # Parse the SSE event to check user_id
-                # Format: "event: post_update\ndata: {...}\n\n"
-                data_line = event.split("data: ")[1].strip()
-                event_data = __import__("json").loads(data_line)
-                if event_data.get("user_id") == user.id:
+        try:
+            while not post_task.done() or not account_task.done():
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=15.0)
                     yield event
-            except Exception:
-                # If parsing fails, forward anyway (safe fallback)
-                yield event
+                except asyncio.TimeoutError:
+                    yield ":heartbeat\n\n"
+        except asyncio.CancelledError:
+            pass
+        finally:
+            post_task.cancel()
+            account_task.cancel()
 
     return StreamingResponse(
         event_generator(),
@@ -211,6 +237,58 @@ async def create_post_endpoint(
                 "caption": post.caption,
                 "status": post.status.value,
                 "created_at": post.created_at.isoformat(),
+            },
+        }
+    )
+
+
+@router.post("/accounts/reconnect")
+async def reconnect_account(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Reconnect an inactive Instagram account by redirecting to OAuth flow.
+
+    POST handler that redirects the user to /auth/instagram/login
+    to start the Instagram OAuth flow for reconnection.
+    """
+    user = await get_current_user_optional(request, db)
+    if user is None:
+        return RedirectResponse(url="/auth/login", status_code=303)
+
+    return RedirectResponse(url="/auth/instagram/login", status_code=303)
+
+
+@router.post("/posts/{post_id}/retry")
+async def retry_post_endpoint(
+    post_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Retry a failed post by re-dispatching it to the Celery worker.
+
+    Verifies user ownership, post state (must be FAILED), and account active status.
+    Returns 200 on success, 400/401/404 on errors.
+    """
+    user = await get_current_user_optional(request, db)
+    if user is None:
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+
+    try:
+        post = await retry_post(db, user, post_id)
+    except ValueError as e:
+        error_msg = str(e)
+        if "not found" in error_msg.lower():
+            return JSONResponse(status_code=404, content={"error": error_msg})
+        return JSONResponse(status_code=400, content={"error": error_msg})
+
+    return JSONResponse(
+        content={
+            "success": True,
+            "post": {
+                "id": post.id,
+                "status": post.status.value,
+                "error_message": post.error_message,
             },
         }
     )
