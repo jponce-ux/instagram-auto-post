@@ -33,6 +33,7 @@ class Post(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     published_at = Column(DateTime(timezone=True), nullable=True)
+    processing_started_at = Column(DateTime(timezone=True), nullable=True)
 
     user = relationship("User", back_populates="posts")
     instagram_account = relationship("InstagramAccount", back_populates="posts")
