@@ -1,6 +1,6 @@
 {# Login form partial #}
 <div id="auth-form-box">
-    <form id="login-form" method="post" class="space-y-4" onsubmit="return handleLoginSubmit(event)">
+    <form action="/auth/login" method="POST" class="space-y-4">
         <div id="login-error" class="hidden bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-4"></div>
         <div>
             <label for="email" class="block text-sm font-medium text-gray-700">Correo electronico</label>
@@ -25,42 +25,3 @@
         No tienes cuenta? <a href="#" onclick="showRegisterForm(); return false;" class="text-blue-600 hover:text-blue-800 font-medium cursor-pointer">Registrate</a>
     </div>
 </div>
-
-<script>
-async function handleLoginSubmit(event) {
-    event.preventDefault();
-    
-    const form = document.getElementById('login-form');
-    const submitBtn = document.getElementById('login-submit');
-    const errorDiv = document.getElementById('login-error');
-    const formData = new FormData(form);
-    
-    errorDiv.classList.add('hidden');
-    
-    submitBtn.disabled = true;
-    submitBtn.textContent = 'Cargando...';
-    
-    try {
-        const response = await fetch('/auth/login', {
-            method: 'POST',
-            body: formData,
-        });
-        
-        if (response.redirected) {
-            window.location.href = response.url;
-        } else if (!response.ok) {
-            errorDiv.textContent = 'Error de autenticacion';
-            errorDiv.classList.remove('hidden');
-            submitBtn.disabled = false;
-            submitBtn.textContent = 'Iniciar Sesion';
-        }
-    } catch (error) {
-        errorDiv.textContent = 'Error de conexion';
-        errorDiv.classList.remove('hidden');
-        submitBtn.disabled = false;
-        submitBtn.textContent = 'Iniciar Sesion';
-    }
-    
-    return false;
-}
-</script>

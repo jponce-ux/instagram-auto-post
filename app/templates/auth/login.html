@@ -11,7 +11,7 @@
         </div>
         
         <div class="bg-white shadow-md rounded-lg p-8">
-            <form id="login-form" onsubmit="return handleLoginSubmit(event)">
+            <form action="/auth/login" method="POST">
                 <div class="space-y-6">
                     <div>
                         <label for="username" class="block text-sm font-medium text-gray-700 mb-2">
@@ -62,37 +62,6 @@
 </div>
 
 <script>
-async function handleLoginSubmit(event) {
-    event.preventDefault();
-    
-    const submitBtn = document.getElementById('login-submit');
-    const formData = new FormData(document.getElementById('login-form'));
-    
-    submitBtn.disabled = true;
-    submitBtn.textContent = 'Cargando...';
-    
-    try {
-        const response = await fetch('/auth/login', {
-            method: 'POST',
-            body: formData,
-        });
-        
-        if (response.redirected) {
-            window.location.href = response.url;
-        } else if (!response.ok) {
-            showToast('error', 'Correo o contraseña incorrectos');
-            submitBtn.disabled = false;
-            submitBtn.textContent = 'Iniciar Sesión';
-        }
-    } catch (error) {
-        showToast('error', 'Error de conexión. Intenta de nuevo.');
-        submitBtn.disabled = false;
-        submitBtn.textContent = 'Iniciar Sesión';
-    }
-    
-    return false;
-}
-
 // Show toast based on URL params
 document.addEventListener('DOMContentLoaded', function() {
     const params = new URLSearchParams(window.location.search);
@@ -102,6 +71,10 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     if (params.get('error') === 'not_verified') {
         showToast('warning', 'Debes verificar tu email antes de iniciar sesión.');
+        window.history.replaceState({}, '', '/auth/login');
+    }
+    if (params.get('error') === '1') {
+        showToast('error', 'Correo o contraseña incorrectos');
         window.history.replaceState({}, '', '/auth/login');
     }
 });
