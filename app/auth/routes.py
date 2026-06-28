@@ -168,21 +168,13 @@ async def register(
     password_confirm: str = Form(...),
     db: AsyncSession = Depends(get_db),
 ):
-    generic_error = "Error en el registro"
-
     if password != password_confirm:
-        return JSONResponse(
-            content={"error": "Las contraseñas no coinciden"},
-            status_code=400,
-        )
+        return RedirectResponse(url="/auth/register?error=1", status_code=303)
 
     result = await db.execute(select(User).where(User.email == email))
     existing_user = result.scalar_one_or_none()
     if existing_user:
-        return JSONResponse(
-            content={"error": generic_error},
-            status_code=400,
-        )
+        return RedirectResponse(url="/auth/register?error=1", status_code=303)
 
     hashed_password = get_password_hash(password)
     user = User(
