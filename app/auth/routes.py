@@ -205,6 +205,12 @@ async def login(
         return RedirectResponse(url="/auth/login?error=1", status_code=303)
 
     if not user.is_verified:
+        # Resend verification email automatically
+        EmailService.send_verification_email(
+            to=user.email,
+            user_name=user.email.split("@")[0],
+            user_id=user.id,
+        )
         return RedirectResponse(
             url="/auth/confirm-email?error=not_verified",
             status_code=303,
