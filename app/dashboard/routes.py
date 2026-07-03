@@ -71,6 +71,27 @@ async def dashboard_index(
     )
 
 
+@router.get("/analytics")
+async def analytics_page(
+    request: Request,
+    period: str = "days_28",
+    db: AsyncSession = Depends(get_db),
+):
+    """Full-page Analytics dashboard with charts and trend indicators."""
+    user = await get_current_user_optional(request, db)
+    if user is None:
+        return RedirectResponse(url="/auth/login", status_code=303)
+
+    return templates.TemplateResponse(
+        request=request,
+        name="dashboard/analytics.html",
+        context={
+            "user": user,
+            "period": period,
+        },
+    )
+
+
 @router.get("/accounts")
 async def dashboard_accounts(
     request: Request,
@@ -330,7 +351,7 @@ async def get_account_analytics(
     account = active_accounts[0]
 
     try:
-        result = await metrics_service.get_account_analytics(
+        result = await metrics_service.get_account_analytics_with_trend(
             instagram_account_id=account.instagram_account_id,
             account_id=account.id,
             period=period,

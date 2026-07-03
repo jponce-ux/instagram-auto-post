@@ -307,6 +307,141 @@ class InstagramMetricsService:
                 return stale
             raise
 
+    async def get_account_analytics_with_trend(
+        self,
+        instagram_account_id: str,
+        account_id: int,
+        period: str = "days_28",
+        access_token: str | None = None,
+    ) -> dict:
+        """
+        Fetch account-level insights with trend comparison and timeline data.
+
+        Extends get_account_analytics() by also fetching:
+        - Previous period metrics for trend calculation
+        - Daily time-series data for chart rendering
+
+        Args:
+            instagram_account_id: Instagram Business Account ID
+            account_id: Local database account ID (for cache key and error handling)
+            period: "day", "days_7", or "days_28"
+            access_token: Instagram access token
+
+        Returns:
+            Dict with metrics, trends, timeline, cache status, and timestamp
+        """
+        import datetime
+
+        cache_key = f"insights:account:{account_id}:{period}"
+
+        # Check cache first
+        cached = await self._get_cached(cache_key)
+        if cached:
+            cached["cached"] = True
+            cached["stale"] = False
+            logger.info(f"Account analytics with trend cache HIT for account {account_id}")
+            return cached
+
+        # Calculate date ranges for current and previous periods
+        now = datetime.datetime.now(datetime.timezone.utc)
+
+        if period == "days_7":
+            days = 7
+        elif period == "days_28":
+            days = 28
+        else:
+            days = 1  # period=day
+
+        current_until = int(now.timestamp())
+        current_since = int((now - datetime.timedelta(days=days)).timestamp())
+        previous_until = current_since
+        previous_since = int((now - datetime.timedelta(days=days * 2)).timestamp())
+
+        async def _fetch():
+            token = access_token or ""
+
+            # Fetch current period metrics
+            current_params = {
+                "metric": "impressions,reach,profile_views,follower_count",
+                "period": period if period in ("day", "days_28") else "days_28",
+            }
+            current_response = await self._call_insights_api(
+                f"/{instagram_account_id}/insights",
+                current_params,
+                token,
+            )
+            current_metrics = self._parse_account_metrics(current_response)
+
+            # Fetch previous period metrics for trend calculation
+            previous_params = {
+                "metric": "impressions,reach,profile_views,follower_count",
+                "period": period if period in ("day", "days_28") else "days_28",
+                "since": str(previous_since),
+                "until": str(previous_until),
+            }
+            try:
+                previous_response = await self._call_insights_api(
+                    f"/{instagram_account_id}/insights",
+                    previous_params,
+                    token,
+                )
+                previous_metrics = self._parse_account_metrics(previous_response)
+            except (APIError, TokenError):
+                # If previous period fetch fails, use zeros for trends
+                logger.warning(f"Previous period fetch failed for account {account_id} — trends will be zero")
+                previous_metrics = {k: 0 for k in current_metrics}
+
+            # Calculate trends
+            trends = self._calculate_trends(current_metrics, previous_metrics)
+
+            # Fetch time-series data for charts
+            try:
+                timeline = await self._fetch_account_time_series(
+                    instagram_account_id=instagram_account_id,
+                    access_token=token,
+                    since=current_since,
+                    until=current_until,
+                )
+            except (APIError, TokenError) as e:
+                logger.warning(f"Time-series fetch failed for account {account_id}: {e}")
+                timeline = {"labels": [], "datasets": {}}
+
+            # Build extended result
+            result = {
+                "account_id": account_id,
+                "instagram_account_id": instagram_account_id,
+                "period": period,
+                "metrics": current_metrics,
+                "trends": trends,
+                "timeline": timeline,
+                "cached": False,
+                "fetched_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "stale": False,
+            }
+            await self._set_cache(cache_key, result)
+
+            logger.info(f"Account analytics with trend cache MISS for account {account_id}")
+            return result
+
+        try:
+            return await self._deduplicate(cache_key, _fetch())
+
+        except TokenError as e:
+            logger.error(f"Token error fetching account analytics with trend: {e}")
+            await self._handle_token_error(account_id)
+            raise
+
+        except APIError as e:
+            logger.error(f"API error fetching account analytics with trend: {e}")
+            # Return stale cached data if available
+            stale = await self._get_cached(cache_key)
+            if stale:
+                stale["cached"] = True
+                stale["stale"] = True
+                logger.info(f"Returning stale cached data for account {account_id}")
+                return stale
+            raise
+
     async def get_media_analytics(
         self,
         media_id: str,
@@ -381,6 +516,107 @@ class InstagramMetricsService:
                 logger.info(f"Returning stale cached data for media {media_id}")
                 return stale
             raise
+
+    @staticmethod
+    def _calculate_trends(current: dict, previous: dict) -> dict:
+        """
+        Calculate percentage change between current and previous period metrics.
+
+        Formula: ((current - previous) / previous) * 100
+
+        Edge cases:
+        - previous == 0 → trend = 0 (avoid division by zero)
+        - both == 0 → trend = 0
+        - current == 0, previous > 0 → trend = -100
+
+        Args:
+            current: Dict of current period metric values
+            previous: Dict of previous period metric values
+
+        Returns:
+            Dict of trend percentages per metric (rounded to 1 decimal)
+        """
+        trends = {}
+        for key in current:
+            curr_val = current.get(key, 0) or 0
+            prev_val = previous.get(key, 0) or 0
+
+            if prev_val == 0:
+                trends[key] = 0.0
+            else:
+                trends[key] = round(((curr_val - prev_val) / prev_val) * 100, 1)
+
+        return trends
+
+    async def _fetch_account_time_series(
+        self,
+        instagram_account_id: str,
+        access_token: str,
+        since: int,
+        until: int,
+    ) -> dict:
+        """
+        Fetch daily time-series data from Instagram Graph API.
+
+        Uses period=day with since/until timestamps to get one data point per day.
+
+        Args:
+            instagram_account_id: Instagram Business Account ID
+            access_token: Instagram access token
+            since: Unix timestamp for start date
+            until: Unix timestamp for end date
+
+        Returns:
+            Dict with 'labels' (date strings) and 'datasets' (metric arrays)
+        """
+        params = {
+            "metric": "impressions,reach,profile_views,follower_count",
+            "period": "day",
+            "since": str(since),
+            "until": str(until),
+        }
+
+        response = await self._call_insights_api(
+            f"/{instagram_account_id}/insights",
+            params,
+            access_token,
+        )
+
+        # Parse time-series response into chart-friendly format
+        data = response.get("data", [])
+
+        # Collect all unique dates from all metrics
+        all_dates = set()
+        metric_values = {}  # metric_name -> {date -> value}
+
+        for item in data:
+            name = item.get("name", "")
+            values = item.get("values", [])
+            metric_values[name] = {}
+            for entry in values:
+                end_time = entry.get("end_time", "")
+                value = entry.get("value", 0)
+                # Extract date portion (YYYY-MM-DD)
+                date_str = end_time[:10] if end_time else ""
+                if date_str:
+                    all_dates.add(date_str)
+                    metric_values[name][date_str] = value
+
+        # Sort dates chronologically
+        sorted_dates = sorted(all_dates)
+
+        # Build aligned datasets
+        datasets = {}
+        for metric_name in ["impressions", "reach", "profile_views", "follower_count"]:
+            datasets[metric_name] = [
+                metric_values.get(metric_name, {}).get(date, 0)
+                for date in sorted_dates
+            ]
+
+        return {
+            "labels": sorted_dates,
+            "datasets": datasets,
+        }
 
     @staticmethod
     def _parse_account_metrics(response: dict) -> dict:
