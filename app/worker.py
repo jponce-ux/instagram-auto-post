@@ -60,6 +60,7 @@ def _is_token_error(error_msg: str) -> bool:
 
     Checks for:
     - Instagram Graph API error codes 463, 467 (token expired/invalid)
+    - HTTP 401 Unauthorized (token expired, revoked, or invalid)
     - OAuthException patterns
     - Existing "token expired" string matching
     - "invalid" + "token" combinations
@@ -71,6 +72,10 @@ def _is_token_error(error_msg: str) -> bool:
 
     # Explicit error codes
     if "463" in error_msg or "467" in error_msg:
+        return True
+
+    # HTTP 401 Unauthorized — token expired, revoked, or invalid
+    if "401" in error_msg or "unauthorized" in msg_lower:
         return True
 
     # OAuth exception patterns
@@ -470,7 +475,6 @@ def _process_post_sync(post_id: int) -> None:
 
             # Invalidate account insights cache so next analytics view fetches fresh data
             try:
-                import asyncio
                 from app.services.metrics import metrics_service
                 asyncio.run(metrics_service._delete_cache_pattern(
                     f"insights:account:{ig_account.id}:*"
