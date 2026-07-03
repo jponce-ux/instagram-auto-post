@@ -12,6 +12,7 @@ from app.auth.dependencies import get_current_user_optional
 from app.models.user import User
 from app.dashboard.service import get_user_accounts, get_user_posts, create_post, get_post_image_url, retry_post
 from app.services.sse import sse_manager, POST_UPDATE_CHANNEL, ACCOUNT_UPDATE_CHANNEL
+from app.services.metrics import metrics_service
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 templates = Jinja2Templates(directory="app/templates")
@@ -292,3 +293,113 @@ async def retry_post_endpoint(
             },
         }
     )
+
+
+@router.get("/analytics/account")
+async def get_account_analytics(
+    request: Request,
+    period: str = "days_28",
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get account-level Instagram insights.
+
+    Returns cached data if available (< 1 hour old), otherwise fetches fresh
+    from the Instagram Graph API.
+    """
+    user = await get_current_user_optional(request, db)
+    if user is None:
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+
+    # Get user's Instagram accounts
+    accounts = await get_user_accounts(db, user)
+    if not accounts:
+        return JSONResponse(
+            status_code=400,
+            content={"error": "No Instagram account connected"},
+        )
+
+    # Use the first active account
+    active_accounts = [acc for acc in accounts if acc.is_active]
+    if not active_accounts:
+        return JSONResponse(
+            status_code=403,
+            content={"error": "Instagram account is inactive. Please reconnect your account."},
+        )
+
+    account = active_accounts[0]
+
+    try:
+        result = await metrics_service.get_account_analytics(
+            instagram_account_id=account.instagram_account_id,
+            account_id=account.id,
+            period=period,
+            access_token=account.access_token,
+        )
+        return JSONResponse(content=result)
+    except Exception as e:
+        logger.error(f"Error fetching account analytics: {e}")
+        return JSONResponse(
+            status_code=502,
+            content={"error": "Analytics temporarily unavailable. Please try again later."},
+        )
+
+
+@router.get("/analytics/media/{post_id}")
+async def get_media_analytics(
+    post_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get media-level Instagram insights for a specific post (on-demand).
+
+    Fetches from cache if available, otherwise calls the Instagram Graph API.
+    """
+    user = await get_current_user_optional(request, db)
+    if user is None:
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+
+    # Verify post ownership
+    from sqlalchemy import select
+    from app.models.post import Post, PostStatus
+
+    result = await db.execute(
+        select(Post).where(Post.id == post_id, Post.user_id == user.id)
+    )
+    post = result.scalar_one_or_none()
+    if not post:
+        return JSONResponse(status_code=404, content={"error": "Post not found"})
+
+    # Check if post is published
+    if post.status != PostStatus.PUBLISHED or not post.ig_media_id:
+        return JSONResponse(
+            status_code=400,
+            content={"error": "Metrics not yet available for this post"},
+        )
+
+    # Check account is active
+    accounts = await get_user_accounts(db, user)
+    active_accounts = [acc for acc in accounts if acc.is_active]
+    if not active_accounts:
+        return JSONResponse(
+            status_code=403,
+            content={"error": "Instagram account is inactive. Please reconnect your account."},
+        )
+
+    account = active_accounts[0]
+
+    try:
+        result = await metrics_service.get_media_analytics(
+            media_id=post.ig_media_id,
+            access_token=account.access_token,
+        )
+        result["post_id"] = post.id
+        result["ig_media_id"] = post.ig_media_id
+        return JSONResponse(content=result)
+    except Exception as e:
+        logger.error(f"Error fetching media analytics for post {post_id}: {e}")
+        return JSONResponse(
+            status_code=502,
+            content={"error": "Analytics temporarily unavailable. Please try again later."},
+        )

@@ -468,6 +468,17 @@ def _process_post_sync(post_id: int) -> None:
             db.commit()
             _publish_post_event(post.id, "published", post.user_id)
 
+            # Invalidate account insights cache so next analytics view fetches fresh data
+            try:
+                import asyncio
+                from app.services.metrics import metrics_service
+                asyncio.run(metrics_service._delete_cache_pattern(
+                    f"insights:account:{ig_account.id}:*"
+                ))
+                logger.info(f"Invalidated insights cache for account {ig_account.id}")
+            except Exception as cache_err:
+                logger.warning(f"Failed to invalidate insights cache: {cache_err}")
+
         except Exception as e:
             # Rollback any partial DB changes
             db.rollback()

@@ -120,7 +120,7 @@ tests/
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read the current plan:
-`.specify/specs/task-028-post-timeout-retry/plan.md`
+`.specify/specs/task-029-instagram-insights/plan.md`
 <!-- SPECKIT END -->
 
 ## Spec-Driven Development (SDD) Workflow
