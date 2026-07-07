@@ -404,3 +404,291 @@ class TestDashboardService:
         mock_db.execute.assert_called_once()
 
 
+# ============================================================
+# Retry Post Tests
+# ============================================================
+# Requirement: FR-004 — Failed posts display "Reintentar" button
+# Requirement: FR-005 — Retry re-dispatches post using original image
+# Requirement: FR-006 — Retry verifies user owns the post
+# Requirement: FR-007 — Retry verifies post is in FAILED state
+# Requirement: FR-008 — Retry verifies Instagram account is active
+# User Story 2 — Retry Failed Posts
+
+
+class TestRetryPost:
+    """REQ-08: Retry failed posts via retry_post service function."""
+
+    @pytest.mark.asyncio
+    async def test_retry_successful(self):
+        """Scenario: User retries a failed post
+        GIVEN a post in FAILED state with an active Instagram account
+        WHEN retry_post is called
+        THEN post transitions to PROCESSING, Celery task dispatched, SSE event published"""
+        from app.dashboard.service import retry_post
+
+        # Setup
+        mock_db = AsyncMock(spec=AsyncSession)
+        mock_user = Mock(spec=User)
+        mock_user.id = 1
+
+        mock_post = Mock(spec=Post)
+        mock_post.id = 1
+        mock_post.user_id = 1
+        mock_post.status = PostStatus.FAILED
+        mock_post.ig_account_id = 1
+        mock_post.error_message = "Previous failure"
+
+        mock_ig_account = Mock(spec=InstagramAccount)
+        mock_ig_account.id = 1
+        mock_ig_account.is_active = True
+        mock_ig_account.user_id = 1
+
+        # Mock queries: first for post, second for account
+        mock_post_result = MagicMock()
+        mock_post_result.scalar_one_or_none.return_value = mock_post
+
+        mock_account_result = MagicMock()
+        mock_account_result.scalar_one_or_none.return_value = mock_ig_account
+
+        mock_db.execute.side_effect = [mock_post_result, mock_account_result]
+
+        with (
+            patch("app.worker.process_instagram_post") as mock_process_task,
+            patch("app.services.sse.sse_manager") as mock_sse,
+        ):
+            result = await retry_post(mock_db, mock_user, 1)
+
+        # Verify
+        assert result == mock_post
+        assert mock_post.status == PostStatus.PROCESSING
+        assert mock_post.processing_started_at is not None
+        assert mock_post.error_message is None
+        mock_db.commit.assert_called()
+        mock_db.refresh.assert_called_once_with(mock_post)
+        mock_process_task.delay.assert_called_once_with(1)
+        mock_sse.publish.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_retry_post_not_found(self):
+        """Scenario: Retry non-existent post
+        GIVEN a post ID that doesn't belong to the user
+        WHEN retry_post is called
+        THEN raises ValueError with 'Post not found'"""
+        from app.dashboard.service import retry_post
+
+        mock_db = AsyncMock(spec=AsyncSession)
+        mock_user = Mock(spec=User)
+        mock_user.id = 1
+
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        mock_db.execute.return_value = mock_result
+
+        with pytest.raises(ValueError, match="Post not found"):
+            await retry_post(mock_db, mock_user, 999)
+
+    @pytest.mark.asyncio
+    async def test_retry_post_not_failed_state(self):
+        """Scenario: Retry a post that's not in FAILED state
+        GIVEN a post in PROCESSING state (not FAILED)
+        WHEN retry_post is called
+        THEN raises ValueError with 'Post is not in a failed state'"""
+        from app.dashboard.service import retry_post
+
+        mock_db = AsyncMock(spec=AsyncSession)
+        mock_user = Mock(spec=User)
+        mock_user.id = 1
+
+        mock_post = Mock(spec=Post)
+        mock_post.id = 1
+        mock_post.user_id = 1
+        mock_post.status = PostStatus.PROCESSING
+        mock_post.ig_account_id = 1
+
+        mock_post_result = MagicMock()
+        mock_post_result.scalar_one_or_none.return_value = mock_post
+        mock_db.execute.return_value = mock_post_result
+
+        with pytest.raises(ValueError, match="not in a failed state"):
+            await retry_post(mock_db, mock_user, 1)
+
+    @pytest.mark.asyncio
+    async def test_retry_inactive_account(self):
+        """Scenario: Retry with inactive Instagram account
+        GIVEN a post in FAILED state but Instagram account is inactive
+        WHEN retry_post is called
+        THEN raises ValueError with 'Instagram account is inactive'"""
+        from app.dashboard.service import retry_post
+
+        mock_db = AsyncMock(spec=AsyncSession)
+        mock_user = Mock(spec=User)
+        mock_user.id = 1
+
+        mock_post = Mock(spec=Post)
+        mock_post.id = 1
+        mock_post.user_id = 1
+        mock_post.status = PostStatus.FAILED
+        mock_post.ig_account_id = 1
+
+        mock_ig_account = Mock(spec=InstagramAccount)
+        mock_ig_account.id = 1
+        mock_ig_account.is_active = False  # Inactive account
+        mock_ig_account.user_id = 1
+
+        mock_post_result = MagicMock()
+        mock_post_result.scalar_one_or_none.return_value = mock_post
+        mock_account_result = MagicMock()
+        mock_account_result.scalar_one_or_none.return_value = mock_ig_account
+
+        mock_db.execute.side_effect = [mock_post_result, mock_account_result]
+
+        with pytest.raises(ValueError, match="Instagram account is inactive"):
+            await retry_post(mock_db, mock_user, 1)
+
+    @pytest.mark.asyncio
+    async def test_retry_account_not_found(self):
+        """Scenario: Retry with missing Instagram account
+        GIVEN a post in FAILED state but Instagram account record is missing
+        WHEN retry_post is called
+        THEN raises ValueError with 'Instagram account not found'"""
+        from app.dashboard.service import retry_post
+
+        mock_db = AsyncMock(spec=AsyncSession)
+        mock_user = Mock(spec=User)
+        mock_user.id = 1
+
+        mock_post = Mock(spec=Post)
+        mock_post.id = 1
+        mock_post.user_id = 1
+        mock_post.status = PostStatus.FAILED
+        mock_post.ig_account_id = 1
+
+        mock_post_result = MagicMock()
+        mock_post_result.scalar_one_or_none.return_value = mock_post
+        mock_account_result = MagicMock()
+        mock_account_result.scalar_one_or_none.return_value = None  # Account not found
+
+        mock_db.execute.side_effect = [mock_post_result, mock_account_result]
+
+        with pytest.raises(ValueError, match="Instagram account not found"):
+            await retry_post(mock_db, mock_user, 1)
+
+
+# ============================================================
+# Retry Post Endpoint Tests
+# ============================================================
+# Requirement: FR-006 — Endpoint verifies user owns the post
+# Requirement: FR-007 — Endpoint verifies post is in FAILED state
+# Requirement: FR-008 — Endpoint verifies Instagram account is active
+
+
+class TestRetryPostEndpoint:
+    """REQ-09: POST /dashboard/posts/{post_id}/retry endpoint."""
+
+    @patch("app.dashboard.routes.get_current_user_optional")
+    @patch("app.dashboard.routes.retry_post", new_callable=AsyncMock)
+    def test_retry_endpoint_success(self, mock_retry_post, mock_get_user):
+        """Scenario: Successful retry
+        GIVEN authenticated user with a failed post
+        WHEN POST /dashboard/posts/{id}/retry is called
+        THEN returns 200 with success and post data"""
+        mock_user = Mock(spec=User)
+        mock_user.id = 1
+        mock_get_user.return_value = mock_user
+
+        mock_post = Mock(spec=Post)
+        mock_post.id = 1
+        mock_post.status = PostStatus.PROCESSING
+        mock_post.error_message = None
+        mock_retry_post.return_value = mock_post
+
+        response = client.post(
+            "/dashboard/posts/1/retry",
+            cookies={"access_token": "Bearer valid"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        assert data["post"]["id"] == 1
+        assert data["post"]["status"] == "processing"
+
+    @patch("app.dashboard.routes.get_current_user_optional")
+    def test_retry_endpoint_unauthorized(self, mock_get_user):
+        """Scenario: Unauthenticated retry
+        GIVEN no user is authenticated
+        WHEN POST /dashboard/posts/{id}/retry is called
+        THEN returns 401 Unauthorized"""
+        mock_get_user.return_value = None
+
+        response = client.post(
+            "/dashboard/posts/1/retry",
+        )
+
+        assert response.status_code == 401
+        data = response.json()
+        assert data["error"] == "Unauthorized"
+
+    @patch("app.dashboard.routes.get_current_user_optional")
+    @patch("app.dashboard.routes.retry_post", new_callable=AsyncMock)
+    def test_retry_endpoint_post_not_found(self, mock_retry_post, mock_get_user):
+        """Scenario: Retry non-existent post
+        GIVEN authenticated user with non-existent post ID
+        WHEN POST /dashboard/posts/{id}/retry is called
+        THEN returns 404 with 'not found' error"""
+        mock_user = Mock(spec=User)
+        mock_user.id = 1
+        mock_get_user.return_value = mock_user
+        mock_retry_post.side_effect = ValueError("Post not found")
+
+        response = client.post(
+            "/dashboard/posts/999/retry",
+            cookies={"access_token": "Bearer valid"},
+        )
+
+        assert response.status_code == 404
+        data = response.json()
+        assert "not found" in data["error"].lower()
+
+    @patch("app.dashboard.routes.get_current_user_optional")
+    @patch("app.dashboard.routes.retry_post", new_callable=AsyncMock)
+    def test_retry_endpoint_wrong_state(self, mock_retry_post, mock_get_user):
+        """Scenario: Retry post not in FAILED state
+        GIVEN authenticated user with a non-failed post
+        WHEN POST /dashboard/posts/{id}/retry is called
+        THEN returns 400 with state error"""
+        mock_user = Mock(spec=User)
+        mock_user.id = 1
+        mock_get_user.return_value = mock_user
+        mock_retry_post.side_effect = ValueError("Post is not in a failed state. Current status: processing")
+
+        response = client.post(
+            "/dashboard/posts/1/retry",
+            cookies={"access_token": "Bearer valid"},
+        )
+
+        assert response.status_code == 400
+        data = response.json()
+        assert "not in a failed state" in data["error"]
+
+    @patch("app.dashboard.routes.get_current_user_optional")
+    @patch("app.dashboard.routes.retry_post", new_callable=AsyncMock)
+    def test_retry_endpoint_inactive_account(self, mock_retry_post, mock_get_user):
+        """Scenario: Retry with inactive account
+        GIVEN authenticated user with inactive Instagram account
+        WHEN POST /dashboard/posts/{id}/retry is called
+        THEN returns 400 with 'inactive' error"""
+        mock_user = Mock(spec=User)
+        mock_user.id = 1
+        mock_get_user.return_value = mock_user
+        mock_retry_post.side_effect = ValueError("Instagram account is inactive. Please reconnect your account.")
+
+        response = client.post(
+            "/dashboard/posts/1/retry",
+            cookies={"access_token": "Bearer valid"},
+        )
+
+        assert response.status_code == 400
+        data = response.json()
+        assert "inactive" in data["error"].lower()
+

@@ -20,6 +20,7 @@ os.environ.setdefault("CELERY_BROKER_URL", "redis://redis:6379/0")
 from app.worker import (
     celery_app,
     check_scheduled_posts,
+    check_stalled_posts,
     debug_task,
     process_instagram_post,
 )
@@ -368,5 +369,248 @@ class TestQueryOrdering:
 
         # Verify the query was called (ordering is in the query construction)
         mock_session.execute.assert_called_once()
+
+
+# ============================================================
+# Check Stalled Posts Tests
+# ============================================================
+# Requirement: FR-001 — Stalled processing posts detected after 15 minutes
+# Requirement: FR-001a — Stalled retrying posts detected after 5 minutes
+# Requirement: FR-002 — Periodic background task runs every 60 seconds
+# Requirement: FR-003 — SSE event published when post transitions to FAILED
+# User Story 1 — Automatic Stalled Post Detection and Failure
+
+
+class TestCheckStalledPosts:
+    """REQ-07: Task detects posts stuck in processing/retrying state and marks as failed."""
+
+    @pytest.fixture
+    def mock_processing_post(self):
+        """Create a mock post stalled in PROCESSING state."""
+        from datetime import datetime, timezone, timedelta
+        post = Mock(spec=Post)
+        post.id = 1
+        post.status = PostStatus.PROCESSING
+        post.processing_started_at = datetime.now(timezone.utc) - timedelta(minutes=16)
+        post.created_at = datetime.now(timezone.utc) - timedelta(minutes=30)
+        post.user_id = 1
+        return post
+
+    @pytest.fixture
+    def mock_retrying_post(self):
+        """Create a mock post stalled in RETRYING state."""
+        from datetime import datetime, timezone, timedelta
+        post = Mock(spec=Post)
+        post.id = 2
+        post.status = PostStatus.RETRYING
+        post.processing_started_at = datetime.now(timezone.utc) - timedelta(minutes=6)
+        post.created_at = datetime.now(timezone.utc) - timedelta(minutes=30)
+        post.user_id = 1
+        return post
+
+    @pytest.fixture
+    def mock_recent_processing_post(self):
+        """Create a mock post still within processing timeout."""
+        from datetime import datetime, timezone, timedelta
+        post = Mock(spec=Post)
+        post.id = 3
+        post.status = PostStatus.PROCESSING
+        post.processing_started_at = datetime.now(timezone.utc) - timedelta(minutes=5)
+        post.user_id = 1
+        return post
+
+    @pytest.fixture
+    def mock_null_processing_started_post(self):
+        """Create a mock post with NULL processing_started_at (pre-migration)."""
+        from datetime import datetime, timezone, timedelta
+        post = Mock(spec=Post)
+        post.id = 4
+        post.status = PostStatus.PROCESSING
+        post.processing_started_at = None
+        post.created_at = datetime.now(timezone.utc) - timedelta(minutes=30)
+        post.user_id = 1
+        return post
+
+    @patch("app.worker.SyncSessionLocal")
+    @patch("app.worker._publish_post_event")
+    def test_find_stalled_processing_post(
+        self, mock_publish_event, mock_session_class, mock_processing_post
+    ):
+        """Scenario: Finds post stalled in PROCESSING > 15 min
+        GIVEN a post in PROCESSING state with processing_started_at 16 minutes ago
+        WHEN check_stalled_posts executes
+        THEN the post is marked as FAILED with 'Processing timeout exceeded'"""
+        mock_session = MagicMock()
+        mock_session_class.return_value.__enter__ = Mock(return_value=mock_session)
+        mock_session_class.return_value.__exit__ = Mock(return_value=False)
+
+        # First query returns stalled processing post, others return empty
+        mock_result_processing = MagicMock()
+        mock_result_processing.scalars.return_value.all.return_value = [mock_processing_post]
+        mock_result_empty = MagicMock()
+        mock_result_empty.scalars.return_value.all.return_value = []
+
+        mock_session.execute.side_effect = [mock_result_processing, mock_result_empty, mock_result_empty]
+
+        # Execute
+        result = check_stalled_posts.run()
+
+        # Verify
+        assert result["stalled"] == 1
+        assert mock_processing_post.status == PostStatus.FAILED
+        assert mock_processing_post.error_message == "Processing timeout exceeded"
+        assert mock_processing_post.processing_started_at is None
+        mock_session.commit.assert_called()
+        mock_publish_event.assert_called_once_with(
+            mock_processing_post.id, "failed", mock_processing_post.user_id, "Processing timeout exceeded"
+        )
+
+    @patch("app.worker.SyncSessionLocal")
+    @patch("app.worker._publish_post_event")
+    def test_find_stalled_retrying_post(
+        self, mock_publish_event, mock_session_class, mock_retrying_post
+    ):
+        """Scenario: Finds post stalled in RETRYING > 5 min
+        GIVEN a post in RETRYING state with processing_started_at 6 minutes ago
+        WHEN check_stalled_posts executes
+        THEN the post is marked as FAILED with 'Retry timeout exceeded'"""
+        mock_session = MagicMock()
+        mock_session_class.return_value.__enter__ = Mock(return_value=mock_session)
+        mock_session_class.return_value.__exit__ = Mock(return_value=False)
+
+        mock_result_empty = MagicMock()
+        mock_result_empty.scalars.return_value.all.return_value = []
+        mock_result_retrying = MagicMock()
+        mock_result_retrying.scalars.return_value.all.return_value = [mock_retrying_post]
+
+        mock_session.execute.side_effect = [mock_result_empty, mock_result_retrying, mock_result_empty]
+
+        # Execute
+        result = check_stalled_posts.run()
+
+        # Verify
+        assert result["stalled"] == 1
+        assert mock_retrying_post.status == PostStatus.FAILED
+        assert mock_retrying_post.error_message == "Retry timeout exceeded"
+        assert mock_retrying_post.processing_started_at is None
+        mock_session.commit.assert_called()
+        mock_publish_event.assert_called_once_with(
+            mock_retrying_post.id, "failed", mock_retrying_post.user_id, "Retry timeout exceeded"
+        )
+
+    @patch("app.worker.SyncSessionLocal")
+    @patch("app.worker._publish_post_event")
+    def test_skip_recent_processing_post(
+        self, mock_publish_event, mock_session_class, mock_recent_processing_post
+    ):
+        """Scenario: Skips post still within timeout
+        GIVEN a post in PROCESSING state for only 5 minutes
+        WHEN check_stalled_posts executes
+        THEN the post status remains unchanged"""
+        mock_session = MagicMock()
+        mock_session_class.return_value.__enter__ = Mock(return_value=mock_session)
+        mock_session_class.return_value.__exit__ = Mock(return_value=False)
+
+        mock_result_empty = MagicMock()
+        mock_result_empty.scalars.return_value.all.return_value = []
+        # All three queries return empty because no post exceeds timeout
+        mock_session.execute.return_value = mock_result_empty
+
+        # Execute
+        result = check_stalled_posts.run()
+
+        # Verify
+        assert result["stalled"] == 0
+        assert mock_recent_processing_post.status == PostStatus.PROCESSING
+        mock_session.commit.assert_not_called()
+        mock_publish_event.assert_not_called()
+
+    @patch("app.worker.SyncSessionLocal")
+    @patch("app.worker._publish_post_event")
+    def test_null_processing_started_at_fallback(
+        self, mock_publish_event, mock_session_class, mock_null_processing_started_post
+    ):
+        """Scenario: NULL processing_started_at falls back to created_at
+        GIVEN a post in PROCESSING state with NULL processing_started_at and created_at 30 min ago
+        WHEN check_stalled_posts executes
+        THEN the post is marked as FAILED via fallback logic"""
+        mock_session = MagicMock()
+        mock_session_class.return_value.__enter__ = Mock(return_value=mock_session)
+        mock_session_class.return_value.__exit__ = Mock(return_value=False)
+
+        mock_result_empty = MagicMock()
+        mock_result_empty.scalars.return_value.all.return_value = []
+        mock_result_fallback = MagicMock()
+        mock_result_fallback.scalars.return_value.all.return_value = [mock_null_processing_started_post]
+
+        # First two queries empty, third (fallback) returns the post
+        mock_session.execute.side_effect = [mock_result_empty, mock_result_empty, mock_result_fallback]
+
+        # Execute
+        result = check_stalled_posts.run()
+
+        # Verify
+        assert result["stalled"] == 1
+        assert mock_null_processing_started_post.status == PostStatus.FAILED
+        assert mock_null_processing_started_post.error_message == "Processing timeout exceeded"
+        mock_session.commit.assert_called()
+        mock_publish_event.assert_called_once_with(
+            mock_null_processing_started_post.id,
+            "failed",
+            mock_null_processing_started_post.user_id,
+            "Processing timeout exceeded",
+        )
+
+    @patch("app.worker.SyncSessionLocal")
+    @patch("app.worker._publish_post_event")
+    def test_handle_empty_result(self, mock_publish_event, mock_session_class):
+        """Scenario: No stalled posts
+        GIVEN no posts match stalled criteria
+        WHEN check_stalled_posts executes
+        THEN task completes without error with stalled=0"""
+        mock_session = MagicMock()
+        mock_session_class.return_value.__enter__ = Mock(return_value=mock_session)
+        mock_session_class.return_value.__exit__ = Mock(return_value=False)
+
+        mock_result_empty = MagicMock()
+        mock_result_empty.scalars.return_value.all.return_value = []
+        mock_session.execute.return_value = mock_result_empty
+
+        # Execute
+        result = check_stalled_posts.run()
+
+        # Verify
+        assert result["stalled"] == 0
+        assert result["error"] is None
+        mock_publish_event.assert_not_called()
+
+    @patch("app.worker.SyncSessionLocal")
+    @patch("app.worker.logger")
+    def test_handle_database_error(self, mock_logger, mock_session_class):
+        """Scenario: Database error during stalled check
+        GIVEN database connection fails
+        WHEN check_stalled_posts executes
+        THEN task logs error and returns stalled=0 without crashing"""
+        mock_session = MagicMock()
+        mock_session_class.return_value.__enter__ = Mock(return_value=mock_session)
+        mock_session_class.return_value.__exit__ = Mock(return_value=False)
+        mock_session.execute.side_effect = Exception("Database connection failed")
+
+        # Execute
+        result = check_stalled_posts.run()
+
+        # Verify error handling
+        assert result["error"] == "Database connection failed"
+        assert result["stalled"] == 0
+        mock_logger.error.assert_called()
+
+    def test_beat_schedule_registered(self):
+        """GIVEN celery_app.conf.beat_schedule
+        THEN check-stalled-posts task is registered with 60-second interval"""
+        assert "check-stalled-posts" in celery_app.conf.beat_schedule
+        schedule = celery_app.conf.beat_schedule["check-stalled-posts"]
+        assert schedule["task"] == "app.worker.check_stalled_posts"
+        from datetime import timedelta
+        assert schedule["schedule"] == timedelta(seconds=60)
 
 

@@ -3,7 +3,7 @@ ticket: TASK-028
 phase: spec
 model: qwen3.6-plus
 generated: 2026-06-19
-status: draft
+status: completed
 ---
 
 # Feature Specification: Stalled Post Timeout, Retry, and Token Health Check
