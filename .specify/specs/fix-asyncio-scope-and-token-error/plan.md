@@ -3,7 +3,7 @@ ticket: fix-asyncio-scope-and-token-error
 phase: plan
 model: qwen3.6-plus
 generated: 2026-07-03
-status: draft
+status: completed
 ---
 
 # Plan: Fix asyncio scope error and 401 token error detection

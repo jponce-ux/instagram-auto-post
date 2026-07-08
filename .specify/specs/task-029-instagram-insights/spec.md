@@ -10,7 +10,7 @@ status: draft
 
 **Feature Branch**: `029-instagram-insights`  
 **Created**: 2026-06-30  
-**Status**: Draft  
+**Status**: Completed  
 **Input**: User description: "Create a unified, resilient backend data service to fetch, parse, and structure account-level and media-level insights from the Instagram Graph API, ensuring efficient processing using cached data or background jobs."
 
 ## User Scenarios & Testing *(mandatory)*

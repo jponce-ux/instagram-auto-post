@@ -193,7 +193,10 @@ class InstagramMetricsService:
             return True
 
         # Token expired/invalid patterns
-        if "token expired" in msg_lower or "token is invalid" in msg_lower:
+        # Match "token expired", "token has expired", "token is invalid" etc.
+        if "expired" in msg_lower and "token" in msg_lower:
+            return True
+        if "token is invalid" in msg_lower:
             return True
         if "access token" in msg_lower and ("expired" in msg_lower or "invalid" in msg_lower):
             return True
