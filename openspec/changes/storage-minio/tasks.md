@@ -45,11 +45,11 @@
 
 ## Phase 5: Verification
 
-- [ ] 5.1 Restart Docker Compose: `docker compose up --build`
-- [ ] 5.2 Verify MinIO container health: `docker compose ps` shows `healthy`
-- [ ] 5.3 Access MinIO Console at `http://localhost:9001` with credentials
-- [ ] 5.4 Verify bucket exists in Console UI or via `mc ls minio/instagram-uploads`
-- [ ] 5.5 Test upload endpoint: `curl -X POST -F "file=@test.jpg" http://localhost:8000/api/v1/debug/upload`
-- [ ] 5.6 Verify response contains presigned URL
-- [ ] 5.7 Test presigned URL accessibility: `curl -I <presigned_url>` returns HTTP 200
-- [ ] 5.8 Verify file appears in MinIO bucket via Console UI
+- [x] 5.1 Restart Docker Compose: `docker compose up --build`
+- [x] 5.2 Verify MinIO container health: `docker compose ps` shows `healthy` (STATUS: healthy)
+- [x] 5.3 Access MinIO Console at `http://localhost:9001` with credentials (HTTP 200)
+- [x] 5.4 Verify bucket exists in Console UI or via `mc ls minio/instagram-uploads` (verified via upload)
+- [x] 5.5 Test upload endpoint: `curl -X POST -F "file=@test.jpg" http://localhost:8000/api/v1/debug/upload`
+- [x] 5.6 Verify response contains presigned URL
+- [x] 5.7 Test presigned URL accessibility: `curl -I <presigned_url>` returns HTTP 200
+- [x] 5.8 Verify file appears in MinIO bucket via Console UI

@@ -10,7 +10,7 @@
 
 **Propósito**: Agregar campos de verificación al modelo User
 
-- [ ] **T001** Crear migración Alembic para `is_verified` y `verified_at` en users
+- [x] **T001** Crear migración Alembic para `is_verified` y `verified_at` en users
   - `is_verified`: Boolean, default=False, server_default="false"
   - `verified_at`: DateTime nullable
   - **Archivo**: `migrations/versions/add_is_verified_to_users.py`
@@ -18,7 +18,7 @@
   - **Verificación**: `docker compose exec web uv run alembic upgrade head`
   - **Tamaño**: S
 
-- [ ] **T002** Actualizar modelo `User` con nuevos campos
+- [x] **T002** Actualizar modelo `User` con nuevos campos
   - **Archivo**: `app/models/user.py`
   - **Entregable**: Modelo con `is_verified` y `verified_at`
   - **Verificación**: `from app.models.user import User; print(User.is_verified)`
@@ -30,7 +30,7 @@
 
 **Propósito**: Crear lógica de generación y validación de tokens de verificación
 
-- [ ] **T003** Crear `app/auth/tokens.py` con `create_verification_token()` y `decode_verification_token()`
+- [x] **T003** Crear `app/auth/tokens.py` con `create_verification_token()` y `decode_verification_token()`
   - Usar python-jose (ya instalada) con SECRET_KEY existente
   - Expiración: 20 minutos
   - Payload: user_id, email, type="email_verification"
@@ -45,7 +45,7 @@
 
 **Propósito**: Integrar token en el flujo de email
 
-- [ ] **T004** Agregar método `EmailService.send_verification_email()` en `app/services/email.py`
+- [x] **T004** Agregar método `EmailService.send_verification_email()` en `app/services/email.py`
   - Genera token con `create_verification_token()`
   - Construye URL: `{BASE_URL}/auth/verify-email/{token}`
   - Renderiza template con enlace de verificación
@@ -55,7 +55,7 @@
   - **Verificación**: Mock test que verifica URL en el email
   - **Tamaño**: M
 
-- [ ] **T005** Actualizar `POST /auth/register` para enviar email de verificación en lugar de welcome email
+- [x] **T005** Actualizar `POST /auth/register` para enviar email de verificación en lugar de welcome email
   - Llamar a `EmailService.send_verification_email()` en lugar de `send_welcome_email()`
   - **Archivo**: `app/auth/routes.py`
   - **Entregable**: Registro envía email con enlace de verificación
@@ -68,7 +68,7 @@
 
 **Propósito**: Implementar GET /auth/verify-email/{token}
 
-- [ ] **T006** Crear endpoint `@router.get("/verify-email/{token}")`
+- [x] **T006** Crear endpoint `@router.get("/verify-email/{token}")`
   - Decodifica token con `decode_verification_token()`
   - Si válido: `user.is_verified = True`, `user.verified_at = now()`, redirect → `/auth/login?verified=1`
   - Si expirado: redirect → `/auth/confirm-email?error=expired`
@@ -84,7 +84,7 @@
 
 **Propósito**: Implementar POST /auth/resend-verification-email con protección
 
-- [ ] **T007** Crear endpoint `@router.post("/resend-verification-email")`
+- [x] **T007** Crear endpoint `@router.post("/resend-verification-email")`
   - Recibe email via Form
   - Verifica usuario existe y no está verificado
   - Rate limit con Redis: clave `resend:{email}`, TTL 120s
@@ -102,7 +102,7 @@
 
 **Propósito**: Bloquear login para usuarios no verificados
 
-- [ ] **T008** Actualizar `POST /auth/login` para verificar `is_verified`
+- [x] **T008** Actualizar `POST /auth/login` para verificar `is_verified`
   - Si `not user.is_verified`: redirect → `/auth/confirm-email?error=not_verified`
   - **Archivo**: `app/auth/routes.py`
   - **Entregable**: Login bloqueado para no verificados
@@ -115,7 +115,7 @@
 
 **Propósito**: Agregar botón de re-envío con HTMX a confirm_email.html
 
-- [ ] **T009** Actualizar `app/templates/auth/confirm_email.html` con botón de re-envío HTMX
+- [x] **T009** Actualizar `app/templates/auth/confirm_email.html` con botón de re-envío HTMX
   - Botón secundario: "¿No recibiste el correo? Reenviar"
   - `hx-post="/auth/resend-verification-email"`
   - `hx-target="#resend-status"`
@@ -126,7 +126,7 @@
   - **Verificación**: Click en re-envío → mensaje sin recarga
   - **Tamaño**: S
 
-- [ ] **T010** Actualizar `app/templates/email/welcome.html` para incluir enlace de verificación
+- [x] **T010** Actualizar `app/templates/email/welcome.html` para incluir enlace de verificación
   - Agregar botón/enlace: "Verifica tu email" con URL de verificación
   - **Archivo**: `app/templates/email/welcome.html`
   - **Entregable**: Template con enlace de verificación
@@ -139,13 +139,13 @@
 
 **Propósito**: Validar flujo completo
 
-- [ ] **T011** Ejecutar suite de tests existente
+- [x] **T011** Ejecutar suite de tests existente
   - Comando: `uv run pytest tests/ -v`
   - **Entregable**: Todos los tests pasan
   - **Verificación**: 0 fallos
   - **Tamaño**: S
 
-- [ ] **T012** Verificación manual E2E [P]
+- [x] **T012** Verificación manual E2E [P]
   - Registrar usuario → verificar email con enlace → login exitoso
   - Intentar login sin verificar → redirect a confirm-email
   - Solicitar re-envío → verificar rate limiting

@@ -2,47 +2,47 @@
 
 ## Phase 0: Git
 
-- [ ] 0.1 Create feature branch `feature/016-navigation-guards` from `main`
+- [x] 0.1 Create feature branch `feature/016-navigation-guards` from `main`
 
 ## Phase 1: Dependencies
 
-- [ ] 1.1 Add `get_current_user_optional` to `app/auth/dependencies.py`
+- [x] 1.1 Add `get_current_user_optional` to `app/auth/dependencies.py`
   - Read JWT from `access_token` cookie (not Authorization header)
   - Return `User | None` (None if missing/invalid/expired)
   - Never raise HTTPException
 
 ## Phase 2: Root Route
 
-- [ ] 2.1 Modify `app/main.py` - update root endpoint `/`
+- [x] 2.1 Modify `app/main.py` - update root endpoint `/`
   - Accept `get_current_user_optional` dependency
   - If user returned → 303 redirect to /dashboard
   - If None returned → 200 with landing.html
 
 ## Phase 3: Dashboard Protection
 
-- [ ] 3.1 Modify dashboard routes to redirect unauthenticated users to `/` instead of returning 401
+- [x] 3.1 Modify dashboard routes to redirect unauthenticated users to `/` instead of returning 401
   - This may require a custom exception handler or modifying the auth dependency behavior
   - Alternative: Create a `require_auth` dependency that redirects instead of raising
 
 ## Phase 4: Auth Guards
 
-- [ ] 4.1 Modify `app/auth/routes.py` - add guards to login and register routes
+- [x] 4.1 Modify `app/auth/routes.py` - add guards to login and register routes
   - GET /auth/login: if authenticated → 303 redirect to /dashboard
   - GET /auth/register: if authenticated → 303 redirect to /dashboard
 
-- [ ] 4.2 Add `/auth/logout` endpoint
+- [x] 4.2 Add `/auth/logout` endpoint
   - Clear `access_token` cookie
   - Redirect 303 to /
 
 ## Phase 5: Landing Page
 
-- [ ] 5.1 Create `app/templates/landing.html`
+- [x] 5.1 Create `app/templates/landing.html`
   - Minimal placeholder with login/register CTAs
   - NOTE: Full content comes in SPEC-017; this is a minimal working page
 
 ## Phase 6: Tests
 
-- [ ] 6.1 Create `tests/test_router_guard.py`
+- [x] 6.1 Create `tests/test_router_guard.py`
   - Test `get_current_user_optional` with valid/invalid/no token
   - Test root route: authenticated → 303 to dashboard, unauthenticated → 200 landing
   - Test /auth/login guard: authenticated → 303 to dashboard
@@ -52,10 +52,10 @@
 
 ## Phase 7: Commit
 
-- [ ] 7.1 Stage all modified files
-- [ ] 7.2 Commit with message: `feat(router): add navigation guards and conditional routing`
-- [ ] 7.3 Push branch to remote
-- [ ] 7.4 Create PR if applicable
+- [x] 7.1 Stage all modified files
+- [x] 7.2 Commit with message: `feat(router): add navigation guards and conditional routing`
+- [x] 7.3 Push branch to remote
+- [x] 7.4 Create PR if applicable
 
 ---
 

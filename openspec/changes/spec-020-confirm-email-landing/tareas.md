@@ -10,7 +10,7 @@
 
 **Propósito**: Crear la página HTML de confirmación con diseño centrado y Tailwind CSS
 
-- [ ] **T001** Crear `app/templates/auth/confirm_email.html`
+- [x] **T001** Crear `app/templates/auth/confirm_email.html`
   - Extender `base.html`
   - Icono SVG inline (Heroicons envelope o check-circle)
   - Título: "¡Casi listo!"
@@ -30,7 +30,7 @@
 
 **Propósito**: Exponer el template como endpoint público
 
-- [ ] **T002** Agregar ruta `@router.get("/confirm-email")` en `app/auth/routes.py`
+- [x] **T002** Agregar ruta `@router.get("/confirm-email")` en `app/auth/routes.py`
   - Usar `get_current_user_optional` como router guard
   - Si usuario autenticado → redirect 303 a `/dashboard`
   - Si no → retornar `TemplateResponse` con `auth/confirm_email.html`
@@ -45,7 +45,7 @@
 
 **Propósito**: Cambiar el flujo post-registro para usar la nueva página
 
-- [ ] **T003** Cambiar redirect en `POST /auth/register`
+- [x] **T003** Cambiar redirect en `POST /auth/register`
   - De: `RedirectResponse(url="/auth/login?registered=1", status_code=303)`
   - A: `RedirectResponse(url="/auth/confirm-email", status_code=303)`
   - **Archivo**: `app/auth/routes.py`
@@ -59,7 +59,7 @@
 
 **Propósito**: Eliminar código obsoleto del login
 
-- [ ] **T004** Eliminar bloque JavaScript de `?registered=1` en `app/templates/auth/login.html`
+- [x] **T004** Eliminar bloque JavaScript de `?registered=1` en `app/templates/auth/login.html`
   - Remover el `document.addEventListener('DOMContentLoaded', ...)` que maneja `registered=1`
   - **Archivo**: `app/templates/auth/login.html`
   - **Entregable**: Login page sin lógica de toast post-registro
@@ -72,13 +72,13 @@
 
 **Propósito**: Validar flujo completo
 
-- [ ] **T005** Ejecutar suite de tests existente
+- [x] **T005** Ejecutar suite de tests existente
   - Comando: `uv run pytest tests/ -v`
   - **Entregable**: Todos los tests pasan (90+)
   - **Verificación**: 0 fallos
   - **Tamaño**: S
 
-- [ ] **T006** Verificación manual del flujo completo
+- [x] **T006** Verificación manual del flujo completo
   - Registrar nuevo usuario → confirmar que redirige a `/auth/confirm-email`
   - Verificar diseño en viewport móvil (Chrome DevTools)
   - Click en "Ir al Login" → verificar que llega a `/auth/login`
