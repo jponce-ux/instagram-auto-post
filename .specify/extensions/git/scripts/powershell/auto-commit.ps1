@@ -1,169 +1,168 @@
-#!/usr/bin/env pwsh
-# Git extension: auto-commit.ps1
-# Automatically commit changes after a Spec Kit command completes.
-# Checks per-command config keys in git-config.yml before committing.
-#
-# Usage: auto-commit.ps1 <event_name>
-#   e.g.: auto-commit.ps1 after_specify
+<#====================================================================
+  auto-commit.ps1 — Spec Kit Git Auto-Commit Hook (PowerShell)
+  
+  Usage: .specify/extensions/git/scripts/powershell/auto-commit.ps1 <event_name>
+  
+  Example: .specify/extensions/git/scripts/powershell/auto-commit.ps1 after_specify
+  
+  Reads .specify/extensions/git/git-config.yml to determine if
+  auto-commit is enabled for the given event. Falls back to
+  auto_commit.default if no event-specific config exists.
+#===================================================================#>
+
 param(
-    [Parameter(Position = 0, Mandatory = $true)]
+    [Parameter(Mandatory = $true)]
     [string]$EventName
 )
-$ErrorActionPreference = 'Stop'
 
-function Find-ProjectRoot {
-    param([string]$StartDir)
-    $current = Resolve-Path $StartDir
-    while ($true) {
-        foreach ($marker in @('.specify', '.git')) {
-            if (Test-Path (Join-Path $current $marker)) {
-                return $current
-            }
-        }
-        $parent = Split-Path $current -Parent
-        if ($parent -eq $current) { return $null }
-        $current = $parent
+# ---------- Paths ----------
+$ConfigPath = Resolve-Path ".specify/extensions/git/git-config.yml" -ErrorAction SilentlyContinue
+$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+
+# ---------- Helper: Parse YAML value for a given key path ----------
+function Get-YamlValue {
+    param(
+        [string]$ConfigPath,
+        [string[]]$KeyPath
+    )
+    
+    try {
+        $lines = Get-Content -Path $ConfigPath -ErrorAction Stop
     }
-}
-
-$repoRoot = Find-ProjectRoot -StartDir $PSScriptRoot
-if (-not $repoRoot) { $repoRoot = Get-Location }
-Set-Location $repoRoot
-
-# Check if git is available
-if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
-    Write-Warning "[specify] Warning: Git not found; skipped auto-commit"
-    exit 0
-}
-
-# Temporarily relax ErrorActionPreference so git stderr warnings
-# (e.g. CRLF notices on Windows) do not become terminating errors.
-$savedEAP = $ErrorActionPreference
-$ErrorActionPreference = 'Continue'
-try {
-    git rev-parse --is-inside-work-tree 2>$null | Out-Null
-    $isRepo = $LASTEXITCODE -eq 0
-} finally {
-    $ErrorActionPreference = $savedEAP
-}
-if (-not $isRepo) {
-    Write-Warning "[specify] Warning: Not a Git repository; skipped auto-commit"
-    exit 0
-}
-
-# Read per-command config from git-config.yml
-$configFile = Join-Path $repoRoot ".specify/extensions/git/git-config.yml"
-$enabled = $false
-$commitMsg = ""
-
-if (Test-Path $configFile) {
-    # Parse YAML to find auto_commit section
-    $inAutoCommit = $false
-    $inEvent = $false
-    $defaultEnabled = $false
-
-    foreach ($line in Get-Content $configFile) {
-        # Detect auto_commit: section
-        if ($line -match '^auto_commit:') {
-            $inAutoCommit = $true
-            $inEvent = $false
+    catch {
+        return $null
+    }
+    
+    $currentLevel = 0
+    $currentPath = @()
+    $result = $null
+    
+    foreach ($line in $lines) {
+        # Skip empty lines and comments
+        if ($line.Trim() -eq '' -or $line.TrimStart().StartsWith('#')) {
             continue
         }
-
-        # Exit auto_commit section on next top-level key
-        if ($inAutoCommit -and $line -match '^[a-z]') {
-            break
+        
+        # Calculate indentation level (2 spaces = 1 level)
+        $indent = 0
+        foreach ($ch in $line.ToCharArray()) {
+            if ($ch -eq ' ') { $indent++ }
+            else { break }
         }
-
-        if ($inAutoCommit) {
-            # Check default key
-            if ($line -match '^\s+default:\s*(.+)$') {
-                $val = $matches[1].Trim().ToLower()
-                if ($val -eq 'true') { $defaultEnabled = $true }
+        $level = $indent / 2
+        
+        # Extract key and value
+        if ($line -match '^\s*([\w-]+):\s*(.*)$') {
+            $key = $matches[1]
+            $value = $matches[2].Trim()
+            
+            # Adjust path based on indentation
+            if ($level -le ($currentPath.Count - 1)) {
+                $currentPath = $currentPath[0..($level - 1)]
             }
-
-            # Detect our event subsection
-            if ($line -match "^\s+${EventName}:") {
-                $inEvent = $true
-                continue
+            
+            if ($value -eq '') {
+                # This key has sub-keys
+                if ($level -ge $currentPath.Count) {
+                    $currentPath += $key
+                }
+                else {
+                    $currentPath[$level] = $key
+                    if ($level -lt $currentPath.Count - 1) {
+                        $currentPath = $currentPath[0..$level]
+                    }
+                }
             }
-
-            # Inside our event subsection
-            if ($inEvent) {
-                # Exit on next sibling key (2-space indent, not 4+)
-                if ($line -match '^\s{2}[a-z]' -and $line -notmatch '^\s{4}') {
-                    $inEvent = $false
-                    continue
+            else {
+                # This key has a scalar value
+                if ($level -ge $currentPath.Count) {
+                    $currentPath += $key
                 }
-                if ($line -match '\s+enabled:\s*(.+)$') {
-                    $val = $matches[1].Trim().ToLower()
-                    if ($val -eq 'true') { $enabled = $true }
-                    if ($val -eq 'false') { $enabled = $false }
+                else {
+                    $currentPath[$level] = $key
+                    if ($level -lt $currentPath.Count - 1) {
+                        $currentPath = $currentPath[0..$level]
+                    }
                 }
-                if ($line -match '\s+message:\s*(.+)$') {
-                    $commitMsg = $matches[1].Trim() -replace '^["'']' -replace '["'']$'
+                
+                # Check if current path matches requested key path
+                $matched = $true
+                for ($i = 0; $i -lt $KeyPath.Length; $i++) {
+                    if ($i -ge $currentPath.Count -or $currentPath[$i] -ne $KeyPath[$i]) {
+                        $matched = $false
+                        break
+                    }
+                }
+                
+                if ($matched) {
+                    $result = $value
                 }
             }
         }
     }
+    
+    return $result
+}
 
-    # If event-specific key not found, use default
-    if (-not $enabled -and $defaultEnabled) {
-        $hasEventKey = Select-String -Path $configFile -Pattern "^\s*${EventName}:" -Quiet
-        if (-not $hasEventKey) {
-            $enabled = $true
-        }
-    }
-} else {
-    # No config file — auto-commit disabled by default
+# ---------- Main ----------
+
+# 1. Check config file exists
+if (-not (Test-Path ".specify/extensions/git/git-config.yml")) {
+    Write-Host "  ⚠ Git config not found. Skipping auto-commit."
     exit 0
 }
+
+# 2. Check git is available
+$gitCmd = Get-Command "git" -ErrorAction SilentlyContinue
+if (-not $gitCmd) {
+    Write-Host "  ⚠ Git is not installed or not in PATH. Skipping auto-commit."
+    exit 0
+}
+
+# 3. Check we're in a git repo
+$gitDir = & git rev-parse --git-dir 2>&1
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "  ⚠ Not a git repository. Skipping auto-commit."
+    exit 0
+}
+
+# 4. Determine if auto-commit is enabled for this event
+$enabledStr = Get-YamlValue -ConfigPath ".specify/extensions/git/git-config.yml" -KeyPath @("auto_commit", $EventName, "enabled")
+if ($null -eq $enabledStr) {
+    # Fall back to default
+    $enabledStr = Get-YamlValue -ConfigPath ".specify/extensions/git/git-config.yml" -KeyPath @("auto_commit", "default")
+}
+
+$enabled = ($enabledStr -eq 'true')
 
 if (-not $enabled) {
+    Write-Host "  ℹ Auto-commit disabled for '$EventName'. Skipping."
     exit 0
 }
 
-# Check if there are changes to commit
-# Relax ErrorActionPreference so CRLF warnings on stderr do not terminate.
-$savedEAP = $ErrorActionPreference
-$ErrorActionPreference = 'Continue'
-try {
-    git diff --quiet HEAD 2>$null; $d1 = $LASTEXITCODE
-    git diff --cached --quiet 2>$null; $d2 = $LASTEXITCODE
-    $untracked = git ls-files --others --exclude-standard 2>$null
-} finally {
-    $ErrorActionPreference = $savedEAP
-}
-
-if ($d1 -eq 0 -and $d2 -eq 0 -and -not $untracked) {
-    Write-Host "[specify] No changes to commit after $EventName" -ForegroundColor DarkGray
-    exit 0
-}
-
-# Derive a human-readable command name from the event
-$commandName = $EventName -replace '^after_', '' -replace '^before_', ''
-$phase = if ($EventName -match '^before_') { 'before' } else { 'after' }
-
-# Use custom message if configured, otherwise default
+# 5. Get commit message
+$commitMsg = Get-YamlValue -ConfigPath ".specify/extensions/git/git-config.yml" -KeyPath @("auto_commit", $EventName, "message")
 if (-not $commitMsg) {
-    $commitMsg = "[Spec Kit] Auto-commit $phase $commandName"
+    $commitMsg = "[Spec Kit] Auto-commit after $EventName"
 }
 
-# Stage and commit
-# Relax ErrorActionPreference so CRLF warnings on stderr do not terminate,
-# while still allowing redirected error output to be captured for diagnostics.
-$savedEAP = $ErrorActionPreference
-$ErrorActionPreference = 'Continue'
-try {
-    $out = git add . 2>&1 | Out-String
-    if ($LASTEXITCODE -ne 0) { throw "git add failed: $out" }
-    $out = git commit -q -m $commitMsg 2>&1 | Out-String
-    if ($LASTEXITCODE -ne 0) { throw "git commit failed: $out" }
-} catch {
-    Write-Warning "[specify] Error: $_"
-    exit 1
-} finally {
-    $ErrorActionPreference = $savedEAP
+# 6. Check if there are changes to commit
+$status = & git status --porcelain 2>&1
+if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($status)) {
+    Write-Host "  ℹ No changes to commit after '$EventName'."
+    exit 0
 }
 
-Write-Host "[OK] Changes committed $phase $commandName"
+# 7. Stage and commit
+Write-Host "  ✔ Auto-commit enabled for '$EventName' — committing changes..."
+& git add .
+& git commit -m $commitMsg
+
+if ($LASTEXITCODE -eq 0) {
+    Write-Host "  ✔ Committed: $commitMsg"
+}
+else {
+    Write-Host "  ⚠ Git commit failed (exit code: $LASTEXITCODE)."
+}
+
+exit $LASTEXITCODE
