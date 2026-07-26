@@ -4,13 +4,23 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
 import re
 import logging
+from datetime import time
 
 logger = logging.getLogger(__name__)
 
 from app.core.database import get_db
 from app.auth.dependencies import get_current_user_optional
 from app.models.user import User
-from app.dashboard.service import get_user_accounts, get_user_posts, create_post, get_post_image_url, retry_post, create_scheduled_post, get_scheduled_posts, update_scheduled_post, delete_scheduled_post
+from app.dashboard.service import (
+    get_user_accounts, get_user_posts, create_post, get_post_image_url, retry_post,
+    create_scheduled_post, get_scheduled_posts, update_scheduled_post, delete_scheduled_post,
+    get_hashtag_collections, create_hashtag_collection, update_hashtag_collection, delete_hashtag_collection,
+    get_content_templates, create_content_template, update_content_template, delete_content_template,
+    get_recurring_schedules, create_recurring_schedule, update_recurring_schedule,
+    pause_recurring_schedule, resume_recurring_schedule, delete_recurring_schedule,
+    calculate_best_times, extract_placeholders, validate_placeholders,
+    get_analytics_overview, get_top_performing_posts, get_media_insights,
+)
 from app.services.sse import sse_manager, POST_UPDATE_CHANNEL, ACCOUNT_UPDATE_CHANNEL
 from app.services.metrics import metrics_service, TokenError, APIError
 
@@ -117,6 +127,133 @@ async def analytics_page(
         context={
             "user": user,
             "period": period,
+        },
+    )
+
+
+# ============================================================
+# Analytics HTMX Partial Routes (spec-026)
+# ============================================================
+
+@router.get("/analytics/kpis")
+async def analytics_kpis_partial(
+    request: Request,
+    period: str = "days_28",
+    db: AsyncSession = Depends(get_db),
+):
+    """Return KPI cards partial for HTMX swap."""
+    user = await get_current_user_optional(request, db)
+    if user is None:
+        return RedirectResponse(url="/auth/login", status_code=303)
+
+    analytics_data = await get_analytics_overview(db, user, period)
+
+    return templates.TemplateResponse(
+        request=request,
+        name="dashboard/partials/kpi_cards.html",
+        context={
+            "user": user,
+            "analytics": analytics_data,
+            "period": period,
+        },
+    )
+
+
+@router.get("/analytics/reach-chart")
+async def analytics_reach_chart_partial(
+    request: Request,
+    period: str = "days_28",
+    db: AsyncSession = Depends(get_db),
+):
+    """Return reach line chart partial for HTMX swap."""
+    user = await get_current_user_optional(request, db)
+    if user is None:
+        return RedirectResponse(url="/auth/login", status_code=303)
+
+    analytics_data = await get_analytics_overview(db, user, period)
+
+    return templates.TemplateResponse(
+        request=request,
+        name="dashboard/partials/reach_chart.html",
+        context={
+            "user": user,
+            "analytics": analytics_data,
+            "period": period,
+        },
+    )
+
+
+@router.get("/analytics/growth-chart")
+async def analytics_growth_chart_partial(
+    request: Request,
+    period: str = "days_28",
+    db: AsyncSession = Depends(get_db),
+):
+    """Return follower growth bar chart partial for HTMX swap."""
+    user = await get_current_user_optional(request, db)
+    if user is None:
+        return RedirectResponse(url="/auth/login", status_code=303)
+
+    analytics_data = await get_analytics_overview(db, user, period)
+
+    return templates.TemplateResponse(
+        request=request,
+        name="dashboard/partials/growth_chart.html",
+        context={
+            "user": user,
+            "analytics": analytics_data,
+            "period": period,
+        },
+    )
+
+
+@router.get("/analytics/top-content")
+async def analytics_top_content_partial(
+    request: Request,
+    period: str = "days_28",
+    limit: int = 6,
+    db: AsyncSession = Depends(get_db),
+):
+    """Return top content grid partial for HTMX swap."""
+    user = await get_current_user_optional(request, db)
+    if user is None:
+        return RedirectResponse(url="/auth/login", status_code=303)
+
+    posts = await get_top_performing_posts(db, user, limit)
+
+    return templates.TemplateResponse(
+        request=request,
+        name="dashboard/partials/top_content.html",
+        context={
+            "user": user,
+            "posts": posts,
+            "period": period,
+        },
+    )
+
+
+@router.get("/analytics/media/{post_id}")
+async def analytics_media_modal(
+    post_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Return detailed analytics modal for a specific post."""
+    user = await get_current_user_optional(request, db)
+    if user is None:
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+
+    try:
+        media_data = await get_media_insights(db, user, post_id)
+    except ValueError as e:
+        return JSONResponse(status_code=404, content={"error": str(e)})
+
+    return templates.TemplateResponse(
+        request=request,
+        name="dashboard/partials/post_analytics_modal.html",
+        context={
+            "user": user,
+            "media": media_data,
         },
     )
 
@@ -302,19 +439,451 @@ async def automation_page(
     if user is None:
         return RedirectResponse(url="/auth/login", status_code=303)
 
+    # Fetch all automation data
+    hashtags = await get_hashtag_collections(db, user)
+    templates = await get_content_templates(db, user)
+    schedules = await get_recurring_schedules(db, user)
+    accounts = await get_user_accounts(db, user)
+    best_times = await calculate_best_times(db, user)
+
     # HTMX requests return only the content fragment
     if _is_htmx_request(request):
         return templates.TemplateResponse(
             request=request,
             name="dashboard/partials/automation-content.html",
-            context={"user": user},
+            context={
+                "user": user,
+                "hashtags": hashtags,
+                "templates": templates,
+                "schedules": schedules,
+                "accounts": accounts,
+                "best_times": best_times,
+            },
         )
 
     return templates.TemplateResponse(
         request=request,
         name="dashboard/automation.html",
-        context={"user": user},
+        context={
+            "user": user,
+            "hashtags": hashtags,
+            "templates": templates,
+            "schedules": schedules,
+            "accounts": accounts,
+            "best_times": best_times,
+        },
     )
+
+
+# ============================================================
+# Hashtag Collections API
+# ============================================================
+
+@router.get("/automation/hashtags")
+async def list_hashtags(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """List all hashtag collections for the user."""
+    user = await get_current_user_optional(request, db)
+    if user is None:
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+
+    hashtags = await get_hashtag_collections(db, user)
+    return JSONResponse(content={
+        "hashtags": [
+            {"id": h.id, "name": h.name, "hashtags": h.hashtags, "created_at": h.created_at.isoformat()}
+            for h in hashtags
+        ]
+    })
+
+
+@router.post("/automation/hashtags")
+async def create_hashtag(
+    request: Request,
+    name: str = Form(...),
+    hashtags: str = Form(...),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a new hashtag collection."""
+    user = await get_current_user_optional(request, db)
+    if user is None:
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+
+    try:
+        collection = await create_hashtag_collection(db, user, name, hashtags)
+        return JSONResponse(content={
+            "success": True,
+            "hashtag": {
+                "id": collection.id,
+                "name": collection.name,
+                "hashtags": collection.hashtags,
+                "created_at": collection.created_at.isoformat(),
+            }
+        })
+    except ValueError as e:
+        return JSONResponse(status_code=400, content={"error": str(e)})
+
+
+@router.put("/automation/hashtags/{hashtag_id}")
+async def update_hashtag(
+    request: Request,
+    hashtag_id: int,
+    name: str = Form(None),
+    hashtags: str = Form(None),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update a hashtag collection."""
+    user = await get_current_user_optional(request, db)
+    if user is None:
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+
+    try:
+        collection = await update_hashtag_collection(db, user, hashtag_id, name, hashtags)
+        return JSONResponse(content={
+            "success": True,
+            "hashtag": {
+                "id": collection.id,
+                "name": collection.name,
+                "hashtags": collection.hashtags,
+                "created_at": collection.created_at.isoformat(),
+            }
+        })
+    except ValueError as e:
+        return JSONResponse(status_code=404, content={"error": str(e)})
+
+
+@router.delete("/automation/hashtags/{hashtag_id}")
+async def delete_hashtag(
+    request: Request,
+    hashtag_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a hashtag collection."""
+    user = await get_current_user_optional(request, db)
+    if user is None:
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+
+    try:
+        await delete_hashtag_collection(db, user, hashtag_id)
+        return JSONResponse(content={"success": True})
+    except ValueError as e:
+        return JSONResponse(status_code=404, content={"error": str(e)})
+
+
+# ============================================================
+# Content Templates API
+# ============================================================
+
+@router.get("/automation/templates")
+async def list_templates(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """List all content templates for the user."""
+    user = await get_current_user_optional(request, db)
+    if user is None:
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+
+    templates = await get_content_templates(db, user)
+    return JSONResponse(content={
+        "templates": [
+            {
+                "id": t.id,
+                "name": t.name,
+                "caption_template": t.caption_template,
+                "placeholders": extract_placeholders(t.caption_template),
+                "created_at": t.created_at.isoformat(),
+            }
+            for t in templates
+        ]
+    })
+
+
+@router.post("/automation/templates")
+async def create_template(
+    request: Request,
+    name: str = Form(...),
+    caption_template: str = Form(...),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a new content template."""
+    user = await get_current_user_optional(request, db)
+    if user is None:
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+
+    # Validate template syntax
+    errors = validate_placeholders(caption_template)
+    if errors:
+        return JSONResponse(status_code=400, content={"error": f"Invalid template: {errors[0]}"})
+
+    try:
+        template = await create_content_template(db, user, name, caption_template)
+        return JSONResponse(content={
+            "success": True,
+            "template": {
+                "id": template.id,
+                "name": template.name,
+                "caption_template": template.caption_template,
+                "placeholders": extract_placeholders(template.caption_template),
+                "created_at": template.created_at.isoformat(),
+            }
+        })
+    except ValueError as e:
+        return JSONResponse(status_code=400, content={"error": str(e)})
+
+
+@router.put("/automation/templates/{template_id}")
+async def update_template(
+    request: Request,
+    template_id: int,
+    name: str = Form(None),
+    caption_template: str = Form(None),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update a content template."""
+    user = await get_current_user_optional(request, db)
+    if user is None:
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+
+    # Validate template syntax if provided
+    if caption_template:
+        errors = validate_placeholders(caption_template)
+        if errors:
+            return JSONResponse(status_code=400, content={"error": f"Invalid template: {errors[0]}"})
+
+    try:
+        template = await update_content_template(db, user, template_id, name, caption_template)
+        return JSONResponse(content={
+            "success": True,
+            "template": {
+                "id": template.id,
+                "name": template.name,
+                "caption_template": template.caption_template,
+                "placeholders": extract_placeholders(template.caption_template),
+                "created_at": template.created_at.isoformat(),
+            }
+        })
+    except ValueError as e:
+        return JSONResponse(status_code=404, content={"error": str(e)})
+
+
+@router.delete("/automation/templates/{template_id}")
+async def delete_template(
+    request: Request,
+    template_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a content template."""
+    user = await get_current_user_optional(request, db)
+    if user is None:
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+
+    try:
+        await delete_content_template(db, user, template_id)
+        return JSONResponse(content={"success": True})
+    except ValueError as e:
+        return JSONResponse(status_code=404, content={"error": str(e)})
+
+
+# ============================================================
+# Recurring Schedules API
+# ============================================================
+
+@router.get("/automation/schedules")
+async def list_schedules(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """List all recurring schedules for the user."""
+    user = await get_current_user_optional(request, db)
+    if user is None:
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+
+    schedules = await get_recurring_schedules(db, user)
+    return JSONResponse(content={
+        "schedules": [
+            {
+                "id": s.id,
+                "ig_account_id": s.ig_account_id,
+                "frequency": s.frequency,
+                "time_of_day": s.time_of_day.isoformat() if s.time_of_day else None,
+                "day_of_week": s.day_of_week,
+                "template_id": s.template_id,
+                "hashtag_collection_id": s.hashtag_collection_id,
+                "is_active": s.is_active,
+                "created_at": s.created_at.isoformat(),
+            }
+            for s in schedules
+        ]
+    })
+
+
+@router.post("/automation/schedules")
+async def create_schedule(
+    request: Request,
+    ig_account_id: int = Form(...),
+    frequency: str = Form(...),
+    time_of_day: str = Form(...),
+    day_of_week: int = Form(None),
+    template_id: int = Form(None),
+    hashtag_collection_id: int = Form(None),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a new recurring schedule."""
+    user = await get_current_user_optional(request, db)
+    if user is None:
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+
+    # Parse time_of_day from HH:MM format
+    try:
+        hour, minute = map(int, time_of_day.split(":"))
+        parsed_time = time(hour=hour, minute=minute)
+    except (ValueError, AttributeError):
+        return JSONResponse(status_code=400, content={"error": "Invalid time format. Use HH:MM"})
+
+    if frequency not in ("daily", "weekly"):
+        return JSONResponse(status_code=400, content={"error": "Frequency must be 'daily' or 'weekly'"})
+
+    if frequency == "weekly" and day_of_week is None:
+        return JSONResponse(status_code=400, content={"error": "day_of_week required for weekly frequency"})
+
+    try:
+        schedule = await create_recurring_schedule(
+            db, user, ig_account_id, frequency, parsed_time,
+            day_of_week, template_id, hashtag_collection_id,
+        )
+        return JSONResponse(content={
+            "success": True,
+            "schedule": {
+                "id": schedule.id,
+                "ig_account_id": schedule.ig_account_id,
+                "frequency": schedule.frequency,
+                "time_of_day": schedule.time_of_day.isoformat() if schedule.time_of_day else None,
+                "day_of_week": schedule.day_of_week,
+                "template_id": schedule.template_id,
+                "hashtag_collection_id": schedule.hashtag_collection_id,
+                "is_active": schedule.is_active,
+                "created_at": schedule.created_at.isoformat(),
+            }
+        })
+    except ValueError as e:
+        return JSONResponse(status_code=400, content={"error": str(e)})
+
+
+@router.put("/automation/schedules/{schedule_id}")
+async def update_schedule(
+    request: Request,
+    schedule_id: int,
+    frequency: str = Form(None),
+    time_of_day: str = Form(None),
+    day_of_week: int = Form(None),
+    template_id: int = Form(None),
+    hashtag_collection_id: int = Form(None),
+    is_active: bool = Form(None),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update a recurring schedule."""
+    user = await get_current_user_optional(request, db)
+    if user is None:
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+
+    # Parse time_of_day from HH:MM format if provided
+    parsed_time = None
+    if time_of_day:
+        try:
+            hour, minute = map(int, time_of_day.split(":"))
+            parsed_time = time(hour=hour, minute=minute)
+        except (ValueError, AttributeError):
+            return JSONResponse(status_code=400, content={"error": "Invalid time format. Use HH:MM"})
+
+    try:
+        schedule = await update_recurring_schedule(
+            db, user, schedule_id, frequency, parsed_time,
+            day_of_week, template_id, hashtag_collection_id, is_active,
+        )
+        return JSONResponse(content={
+            "success": True,
+            "schedule": {
+                "id": schedule.id,
+                "ig_account_id": schedule.ig_account_id,
+                "frequency": schedule.frequency,
+                "time_of_day": schedule.time_of_day.isoformat() if schedule.time_of_day else None,
+                "day_of_week": schedule.day_of_week,
+                "template_id": schedule.template_id,
+                "hashtag_collection_id": schedule.hashtag_collection_id,
+                "is_active": schedule.is_active,
+                "created_at": schedule.created_at.isoformat(),
+            }
+        })
+    except ValueError as e:
+        return JSONResponse(status_code=404, content={"error": str(e)})
+
+
+@router.post("/automation/schedules/{schedule_id}/pause")
+async def pause_schedule(
+    request: Request,
+    schedule_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Pause a recurring schedule."""
+    user = await get_current_user_optional(request, db)
+    if user is None:
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+
+    try:
+        schedule = await pause_recurring_schedule(db, user, schedule_id)
+        return JSONResponse(content={
+            "success": True,
+            "schedule": {
+                "id": schedule.id,
+                "is_active": schedule.is_active,
+            }
+        })
+    except ValueError as e:
+        return JSONResponse(status_code=404, content={"error": str(e)})
+
+
+@router.post("/automation/schedules/{schedule_id}/resume")
+async def resume_schedule(
+    request: Request,
+    schedule_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Resume a paused recurring schedule."""
+    user = await get_current_user_optional(request, db)
+    if user is None:
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+
+    try:
+        schedule = await resume_recurring_schedule(db, user, schedule_id)
+        return JSONResponse(content={
+            "success": True,
+            "schedule": {
+                "id": schedule.id,
+                "is_active": schedule.is_active,
+            }
+        })
+    except ValueError as e:
+        return JSONResponse(status_code=404, content={"error": str(e)})
+
+
+@router.delete("/automation/schedules/{schedule_id}")
+async def delete_schedule(
+    request: Request,
+    schedule_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a recurring schedule."""
+    user = await get_current_user_optional(request, db)
+    if user is None:
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+
+    try:
+        await delete_recurring_schedule(db, user, schedule_id)
+        return JSONResponse(content={"success": True})
+    except ValueError as e:
+        return JSONResponse(status_code=404, content={"error": str(e)})
 
 
 @router.get("/accounts")

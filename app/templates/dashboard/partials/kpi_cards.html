@@ -1,0 +1,135 @@
+{# KPI Cards Partial - spec-026-analytics-detailed #}
+{% if analytics.error %}
+    {# Error states #}
+    {% if analytics.error == "no_account" %}
+    <div class="col-span-3 text-center py-12">
+        <svg class="mx-auto h-16 w-16 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/>
+        </svg>
+        <h3 class="mt-4 text-lg font-medium text-gray-900">Sin cuenta de Instagram conectada</h3>
+        <p class="mt-2 text-sm text-gray-500">Conecta tu cuenta de Instagram para ver las analíticas.</p>
+        <div class="mt-6">
+            <a href="/auth/instagram/login"
+               class="inline-flex items-center px-6 py-3 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700">
+                Conectar Cuenta de Instagram
+            </a>
+        </div>
+    </div>
+    {% elif analytics.error == "account_inactive" %}
+    <div class="col-span-3 text-center py-12">
+        <svg class="mx-auto h-12 w-12 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/>
+        </svg>
+        <h3 class="mt-4 text-lg font-medium text-gray-900">Cuenta inactiva</h3>
+        <p class="mt-2 text-sm text-gray-500">Tu cuenta de Instagram necesita ser reconectada.</p>
+        <div class="mt-6">
+            <form method="POST" action="/dashboard/accounts/reconnect" class="inline">
+                <button type="submit" class="inline-flex items-center px-6 py-3 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-gradient-to-r from-purple-600 to-pink-600">
+                    Reconectar Cuenta
+                </button>
+            </form>
+        </div>
+    </div>
+    {% else %}
+    <div class="col-span-3 text-center py-12">
+        <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        </svg>
+        <h3 class="mt-4 text-lg font-medium text-gray-900">Analíticas no disponibles</h3>
+        <p class="mt-2 text-sm text-gray-500">{{ analytics.message or "Inténtalo más tarde." }}</p>
+    </div>
+    {% endif %}
+{% else %}
+    {# KPI Cards - Total Followers, Monthly Reach, Engagement Rate #}
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {# Total Followers #}
+        <div class="bg-white rounded-lg shadow p-4 hover:shadow-md transition-shadow">
+            <div class="flex items-center justify-between mb-2">
+                <span class="text-xs font-medium text-gray-500 uppercase tracking-wide">Total Seguidores</span>
+                {% if analytics.kpis.total_followers.trend > 0 %}
+                <span class="text-green-500 inline-flex items-center text-xs font-medium" title="Aumento del {{ analytics.kpis.total_followers.trend }}%">
+                    <svg class="w-3 h-3 mr-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18"/>
+                    </svg>
+                    +{{ analytics.kpis.total_followers.trend }}%
+                </span>
+                {% elif analytics.kpis.total_followers.trend < 0 %}
+                <span class="text-red-500 inline-flex items-center text-xs font-medium" title="Disminución del {{ analytics.kpis.total_followers.trend }}%">
+                    <svg class="w-3 h-3 mr-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"/>
+                    </svg>
+                    {{ analytics.kpis.total_followers.trend }}%
+                </span>
+                {% else %}
+                <span class="text-gray-400 inline-flex items-center text-xs font-medium">
+                    <svg class="w-3 h-3 mr-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4"/>
+                    </svg>
+                    0%
+                </span>
+                {% endif %}
+            </div>
+            <p class="text-2xl font-bold text-gray-900">{{ "{:,}".format(analytics.kpis.total_followers.value | default(0) | int) }}</p>
+        </div>
+
+        {# Monthly Reach #}
+        <div class="bg-white rounded-lg shadow p-4 hover:shadow-md transition-shadow">
+            <div class="flex items-center justify-between mb-2">
+                <span class="text-xs font-medium text-gray-500 uppercase tracking-wide">Alcance Mensual</span>
+                {% if analytics.kpis.monthly_reach.trend > 0 %}
+                <span class="text-green-500 inline-flex items-center text-xs font-medium" title="Aumento del {{ analytics.kpis.monthly_reach.trend }}%">
+                    <svg class="w-3 h-3 mr-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18"/>
+                    </svg>
+                    +{{ analytics.kpis.monthly_reach.trend }}%
+                </span>
+                {% elif analytics.kpis.monthly_reach.trend < 0 %}
+                <span class="text-red-500 inline-flex items-center text-xs font-medium" title="Disminución del {{ analytics.kpis.monthly_reach.trend }}%">
+                    <svg class="w-3 h-3 mr-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"/>
+                    </svg>
+                    {{ analytics.kpis.monthly_reach.trend }}%
+                </span>
+                {% else %}
+                <span class="text-gray-400 inline-flex items-center text-xs font-medium">
+                    <svg class="w-3 h-3 mr-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4"/>
+                    </svg>
+                    0%
+                </span>
+                {% endif %}
+            </div>
+            <p class="text-2xl font-bold text-gray-900">{{ "{:,}".format(analytics.kpis.monthly_reach.value | default(0) | int) }}</p>
+        </div>
+
+        {# Engagement Rate #}
+        <div class="bg-white rounded-lg shadow p-4 hover:shadow-md transition-shadow">
+            <div class="flex items-center justify-between mb-2">
+                <span class="text-xs font-medium text-gray-500 uppercase tracking-wide">Tasa de Interacción</span>
+                {% if analytics.kpis.engagement_rate.trend > 0 %}
+                <span class="text-green-500 inline-flex items-center text-xs font-medium" title="Aumento del {{ analytics.kpis.engagement_rate.trend }}%">
+                    <svg class="w-3 h-3 mr-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18"/>
+                    </svg>
+                    +{{ analytics.kpis.engagement_rate.trend }}%
+                </span>
+                {% elif analytics.kpis.engagement_rate.trend < 0 %}
+                <span class="text-red-500 inline-flex items-center text-xs font-medium" title="Disminución del {{ analytics.kpis.engagement_rate.trend }}%">
+                    <svg class="w-3 h-3 mr-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"/>
+                    </svg>
+                    {{ analytics.kpis.engagement_rate.trend }}%
+                </span>
+                {% else %}
+                <span class="text-gray-400 inline-flex items-center text-xs font-medium">
+                    <svg class="w-3 h-3 mr-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4"/>
+                    </svg>
+                    0%
+                </span>
+                {% endif %}
+            </div>
+            <p class="text-2xl font-bold text-gray-900">{{ analytics.kpis.engagement_rate.value | default(0) }}%</p>
+        </div>
+    </div>
+{% endif %}

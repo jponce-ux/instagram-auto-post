@@ -1,0 +1,110 @@
+{# Reach Line Chart Partial - spec-026-analytics-detailed #}
+<div class="bg-white rounded-lg shadow p-6">
+    <h2 class="text-lg font-semibold text-gray-900 mb-4">Alcance en el Tiempo</h2>
+
+    {% if analytics.error %}
+        <div class="text-center py-8 text-gray-500">
+            <p>No hay datos de alcance disponibles.</p>
+        </div>
+    {% elif not analytics.reach_timeseries.labels %}
+        <div class="text-center py-8 text-gray-500">
+            <svg class="mx-auto h-12 w-12 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+            </svg>
+            <p class="mt-2 text-sm">Sin datos de alcance para este período.</p>
+        </div>
+    {% else %}
+        <div class="relative" style="height: 300px;">
+            <canvas id="reachChart"
+                    data-labels="{{ analytics.reach_timeseries.labels | tojson }}"
+                    data-data="{{ analytics.reach_timeseries.data | tojson }}">
+            </canvas>
+        </div>
+    {% endif %}
+</div>
+
+<script>
+(function() {
+    // Initialize reach chart if canvas exists and has data
+    const canvas = document.getElementById('reachChart');
+    if (canvas && canvas.dataset.labels && canvas.dataset.data) {
+        const labels = JSON.parse(canvas.dataset.labels);
+        const data = JSON.parse(canvas.dataset.data);
+
+        if (labels.length > 0 && data.length > 0) {
+            const ctx = canvas.getContext('2d');
+
+            // Check if chart already exists
+            if (window.reachChartInstance) {
+                window.reachChartInstance.destroy();
+            }
+
+            window.reachChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels.map(d => {
+                        const date = new Date(d + 'T00:00:00');
+                        return date.toLocaleDateString('es-ES', { day: '2-digit', month: 'short' });
+                    }),
+                    datasets: [{
+                        label: 'Alcance',
+                        data: data,
+                        borderColor: '#8B5CF6',
+                        backgroundColor: 'rgba(139, 92, 246, 0.1)',
+                        tension: 0.3,
+                        fill: true,
+                        pointRadius: 3,
+                        pointHoverRadius: 5,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                            padding: 12,
+                            cornerRadius: 8,
+                            callbacks: {
+                                label: function(context) {
+                                    return context.parsed.y.toLocaleString('es-ES');
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: {
+                                display: false
+                            },
+                            ticks: {
+                                font: { size: 11 },
+                                maxRotation: 45,
+                                autoSkip: true,
+                                maxTicksLimit: 10
+                            }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            grid: {
+                                color: 'rgba(0, 0, 0, 0.05)'
+                            },
+                            ticks: {
+                                font: { size: 11 },
+                                callback: function(value) {
+                                    if (value >= 1000000) return (value / 1000000).toFixed(1) + 'M';
+                                    if (value >= 1000) return (value / 1000).toFixed(1) + 'K';
+                                    return value;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+    }
+})();
+</script>
