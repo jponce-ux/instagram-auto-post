@@ -47,6 +47,11 @@ def _sanitize_error_message(error_msg: str) -> str:
     return sanitized
 
 
+def _is_htmx_request(request: Request) -> bool:
+    """Check if the request is an HTMX partial page request."""
+    return request.headers.get("hx-request", "").lower() == "true"
+
+
 @router.get("/")
 async def dashboard_index(
     request: Request,
@@ -60,6 +65,19 @@ async def dashboard_index(
     accounts = await get_user_accounts(db, user)
     posts = await get_user_posts(db, user)
 
+    # HTMX requests return only the content fragment
+    if _is_htmx_request(request):
+        return templates.TemplateResponse(
+            request=request,
+            name="dashboard/partials/dashboard-content.html",
+            context={
+                "user": user,
+                "accounts": accounts,
+                "posts": posts,
+            },
+        )
+
+    # Full page request
     return templates.TemplateResponse(
         request=request,
         name="dashboard/index.html",
@@ -82,6 +100,17 @@ async def analytics_page(
     if user is None:
         return RedirectResponse(url="/auth/login", status_code=303)
 
+    # HTMX requests return only the content fragment
+    if _is_htmx_request(request):
+        return templates.TemplateResponse(
+            request=request,
+            name="dashboard/partials/analytics-content.html",
+            context={
+                "user": user,
+                "period": period,
+            },
+        )
+
     return templates.TemplateResponse(
         request=request,
         name="dashboard/analytics.html",
@@ -89,6 +118,56 @@ async def analytics_page(
             "user": user,
             "period": period,
         },
+    )
+
+
+@router.get("/schedule")
+async def schedule_page(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Schedule (Agenda) view for managing scheduled posts."""
+    user = await get_current_user_optional(request, db)
+    if user is None:
+        return RedirectResponse(url="/auth/login", status_code=303)
+
+    # HTMX requests return only the content fragment
+    if _is_htmx_request(request):
+        return templates.TemplateResponse(
+            request=request,
+            name="dashboard/partials/schedule-content.html",
+            context={"user": user},
+        )
+
+    return templates.TemplateResponse(
+        request=request,
+        name="dashboard/schedule.html",
+        context={"user": user},
+    )
+
+
+@router.get("/automation")
+async def automation_page(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Automation view for managing automation tools."""
+    user = await get_current_user_optional(request, db)
+    if user is None:
+        return RedirectResponse(url="/auth/login", status_code=303)
+
+    # HTMX requests return only the content fragment
+    if _is_htmx_request(request):
+        return templates.TemplateResponse(
+            request=request,
+            name="dashboard/partials/automation-content.html",
+            context={"user": user},
+        )
+
+    return templates.TemplateResponse(
+        request=request,
+        name="dashboard/automation.html",
+        context={"user": user},
     )
 
 

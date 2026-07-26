@@ -1,0 +1,30 @@
+{% extends "app_layout.html" %}
+
+{% block title %}Agenda - Mi App{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <!-- Header -->
+    <div class="mb-8">
+        <h1 class="text-2xl sm:text-3xl font-bold text-gray-900">Agenda de Publicaciones</h1>
+        <p class="mt-1 text-sm text-gray-500">Administra tus publicaciones programadas</p>
+    </div>
+
+    <!-- Empty State -->
+    <div class="bg-white rounded-lg shadow p-12 text-center">
+        <svg class="mx-auto h-16 w-16 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+        </svg>
+        <h3 class="mt-4 text-lg font-medium text-gray-900">Próximamente: Programación de posts</h3>
+        <p class="mt-2 text-sm text-gray-500">La funcionalidad de programación de publicaciones estará disponible pronto.</p>
+        <div class="mt-6">
+            <span class="inline-flex items-center px-4 py-2 rounded-md text-sm font-medium bg-gray-100 text-gray-500">
+                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                Próximamente
+            </span>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,18 +1,7 @@
-{% extends "app_layout.html" %}
-
-{% block title %}Analíticas - Mi App{% endblock %}
-
-{% block content %}
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
     <!-- Header -->
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-8 gap-4">
         <div class="flex items-center space-x-3">
-            <a href="/dashboard" class="inline-flex items-center text-sm text-gray-500 hover:text-gray-700 transition-colors">
-                <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
-                </svg>
-                Dashboard
-            </a>
             <h1 class="text-2xl sm:text-3xl font-bold text-gray-900">Analíticas</h1>
         </div>
 
@@ -84,19 +73,11 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 
 <script>
-// ============================================================
-// Analytics Page State
-// ============================================================
-
 let currentPeriod = 'days_28';
 let analyticsData = null;
 let analyticsChart = null;
 let fetchAbortController = null;
 let debounceTimer = null;
-
-// ============================================================
-// Fetch Analytics Data
-// ============================================================
 
 async function fetchAnalytics(period) {
     const retryBtn = document.getElementById('analytics-retry-btn');
@@ -105,13 +86,11 @@ async function fetchAnalytics(period) {
     retryBtn.classList.add('hidden');
     cacheStatus.textContent = '';
 
-    // Cancel any in-flight request
     if (fetchAbortController) {
         fetchAbortController.abort();
     }
     fetchAbortController = new AbortController();
 
-    // Show skeleton loading
     showSkeletonLoading();
 
     try {
@@ -135,7 +114,6 @@ async function fetchAnalytics(period) {
         }
 
         if (!response.ok) {
-            // API error — show stale data or error
             if (analyticsData && analyticsData.cached) {
                 renderSummaryCards(analyticsData.metrics, analyticsData.trends);
                 renderTimelineChart(analyticsData.timeline);
@@ -151,7 +129,6 @@ async function fetchAnalytics(period) {
         const data = await response.json();
         analyticsData = data;
 
-        // Update cache status
         if (data.stale) {
             cacheStatus.textContent = 'Actualizando...';
             cacheStatus.className = 'text-xs text-amber-600 animate-pulse';
@@ -163,13 +140,11 @@ async function fetchAnalytics(period) {
             cacheStatus.className = 'text-xs text-green-600';
         }
 
-        // Render data
         renderSummaryCards(data.metrics, data.trends);
         renderTimelineChart(data.timeline);
 
     } catch (error) {
         if (error.name === 'AbortError') {
-            // Request was cancelled — do nothing
             return;
         }
 
@@ -184,10 +159,6 @@ async function fetchAnalytics(period) {
         }
     }
 }
-
-// ============================================================
-// Render Summary Cards with Trend Indicators
-// ============================================================
 
 function renderSummaryCards(metrics, trends) {
     const container = document.getElementById('summary-cards');
@@ -212,10 +183,6 @@ function renderSummaryCards(metrics, trends) {
         </div>
     `).join('');
 }
-
-// ============================================================
-// Render Trend Indicator
-// ============================================================
 
 function renderTrendIndicator(trendValue) {
     if (trendValue === null || trendValue === undefined) {
@@ -252,10 +219,6 @@ function renderTrendIndicator(trendValue) {
     }
 }
 
-// ============================================================
-// Render Timeline Chart (Chart.js)
-// ============================================================
-
 function renderTimelineChart(timelineData) {
     const skeleton = document.getElementById('chart-skeleton');
     const noDataMsg = document.getElementById('chart-no-data');
@@ -275,20 +238,16 @@ function renderTimelineChart(timelineData) {
     });
 
     const datasets = timelineData.datasets || {};
-
-    // Check if all values are zero
     const allZero = Object.values(datasets).every(arr => arr.every(v => v === 0));
     if (allZero) {
         noDataMsg.classList.remove('hidden');
     }
 
-    // Destroy existing chart if present
     if (analyticsChart) {
         analyticsChart.destroy();
     }
 
     const ctx = document.getElementById('analytics-chart').getContext('2d');
-
     const chartDatasets = [];
 
     const metricConfig = [
@@ -353,21 +312,12 @@ function renderTimelineChart(timelineData) {
             },
             scales: {
                 x: {
-                    grid: {
-                        display: false,
-                    },
-                    ticks: {
-                        font: { size: 11 },
-                        maxRotation: 45,
-                        autoSkip: true,
-                        maxTicksLimit: 10,
-                    },
+                    grid: { display: false },
+                    ticks: { font: { size: 11 }, maxRotation: 45, autoSkip: true, maxTicksLimit: 10 },
                 },
                 y: {
                     beginAtZero: true,
-                    grid: {
-                        color: 'rgba(0, 0, 0, 0.05)',
-                    },
+                    grid: { color: 'rgba(0, 0, 0, 0.05)' },
                     ticks: {
                         font: { size: 11 },
                         callback: function(value) {
@@ -382,14 +332,9 @@ function renderTimelineChart(timelineData) {
     });
 }
 
-// ============================================================
-// Period Selector (with debounce)
-// ============================================================
-
 function changePeriod(period) {
     if (period === currentPeriod) return;
 
-    // Debounce: 300ms delay
     if (debounceTimer) {
         clearTimeout(debounceTimer);
     }
@@ -397,7 +342,6 @@ function changePeriod(period) {
     debounceTimer = setTimeout(() => {
         currentPeriod = period;
 
-        // Update button styles
         const btn7d = document.getElementById('period-7d');
         const btn28d = document.getElementById('period-28d');
 
@@ -413,10 +357,6 @@ function changePeriod(period) {
     }, 300);
 }
 
-// ============================================================
-// Retry Handler
-// ============================================================
-
 async function retryAnalytics() {
     const retryBtn = document.getElementById('analytics-retry-btn');
     retryBtn.disabled = true;
@@ -428,7 +368,6 @@ async function retryAnalytics() {
         Cargando...
     `;
 
-    // Clear cache to force fresh fetch
     analyticsData = null;
     await fetchAnalytics(currentPeriod);
 
@@ -440,10 +379,6 @@ async function retryAnalytics() {
         Reintentar
     `;
 }
-
-// ============================================================
-// Loading / Error States
-// ============================================================
 
 function showSkeletonLoading() {
     const container = document.getElementById('summary-cards');
@@ -469,9 +404,7 @@ function showSkeletonLoading() {
             <div class="h-4 bg-gray-200 rounded w-12 mt-2"></div>
         </div>
     `;
-
-    const skeleton = document.getElementById('chart-skeleton');
-    skeleton.classList.remove('hidden');
+    document.getElementById('chart-skeleton').classList.remove('hidden');
 }
 
 function showNoAccountState() {
@@ -535,10 +468,6 @@ function showApiUnavailableState() {
     document.getElementById('chart-skeleton').classList.add('hidden');
 }
 
-// ============================================================
-// Utility Functions (reused from layout.html)
-// ============================================================
-
 function formatNumber(num) {
     if (num === null || num === undefined) return '0';
     if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
@@ -562,12 +491,7 @@ function getMetricIcon(type) {
     return icons[type] || '';
 }
 
-// ============================================================
-// Initialize on page load
-// ============================================================
-
 document.addEventListener('DOMContentLoaded', function() {
-    // Read initial period from URL query params
     const params = new URLSearchParams(window.location.search);
     const urlPeriod = params.get('period');
     if (urlPeriod === 'days_7') {
@@ -579,11 +503,9 @@ document.addEventListener('DOMContentLoaded', function() {
     fetchAnalytics(currentPeriod);
 });
 
-// Cancel in-flight request on page unload
 window.addEventListener('beforeunload', function() {
     if (fetchAbortController) {
         fetchAbortController.abort();
     }
 });
 </script>
-{% endblock %}
