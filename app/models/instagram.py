@@ -18,3 +18,4 @@ class InstagramAccount(Base):
 
     user = relationship("User", back_populates="instagram_accounts")
     posts = relationship("Post", back_populates="instagram_account")
+    recurring_schedules = relationship("RecurringSchedule", back_populates="instagram_account")

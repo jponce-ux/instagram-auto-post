@@ -1,24 +1,93 @@
-<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-    <!-- Header -->
-    <div class="mb-8">
-        <h1 class="text-2xl sm:text-3xl font-bold text-gray-900">Automation</h1>
-        <p class="mt-1 text-sm text-gray-500">Herramientas de automatización</p>
-    </div>
-
-    <!-- Empty State -->
-    <div class="bg-white rounded-lg shadow p-12 text-center">
-        <svg class="mx-auto h-16 w-16 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13 10V3L4 14h7v7l9-11h-7z"/>
-        </svg>
-        <h3 class="mt-4 text-lg font-medium text-gray-900">Próximamente: Herramientas de automatización</h3>
-        <p class="mt-2 text-sm text-gray-500">Las herramientas de automatización estarán disponibles pronto.</p>
-        <div class="mt-6">
-            <span class="inline-flex items-center px-4 py-2 rounded-md text-sm font-medium bg-gray-100 text-gray-500">
-                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                </svg>
-                Próximamente
+<!-- HTMX partial for automation content refresh -->
+<div id="automation-content-partial">
+    <!-- Best Times Suggestion (if available) -->
+    {% if best_times and best_times|length > 0 %}
+    <div class="mb-6 bg-gradient-to-r from-purple-50 to-pink-50 border border-purple-200 rounded-lg p-4">
+        <div class="flex items-center">
+            <svg class="w-5 h-5 text-purple-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+            </svg>
+            <span class="text-sm font-medium text-purple-900">Mejores horarios para publicar:</span>
+            <span class="ml-2 text-sm text-purple-700">
+                {% for time in best_times %}
+                    {{ time.hour }}:00{% if not loop.last %}, {% endif %}
+                {% endfor %}
             </span>
         </div>
     </div>
+    {% elif best_times|length == 0 %}
+    <div class="mb-6 bg-gray-50 border border-gray-200 rounded-lg p-4">
+        <p class="text-sm text-gray-500">
+            <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            Publica al menos 10 posts para ver sugerencias de horarios óptimos.
+        </p>
+    </div>
+    {% endif %}
+
+    <!-- Tabs -->
+    <div class="border-b border-gray-200 mb-6">
+        <nav class="-mb-px flex space-x-8" aria-label="Tabs">
+            <button @click="$dispatch('tab-change', {tab: 'hashtags'})"
+                    :class="$store.tabs?.active === 'hashtags' ? 'border-purple-500 text-purple-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'"
+                    class="whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors tab-btn"
+                    data-tab="hashtags">
+                <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14"/>
+                </svg>
+                Hashtags
+                <span class="ml-2 bg-gray-100 text-gray-600 py-0.5 px-2 rounded-full text-xs">{{ hashtags|length }}</span>
+            </button>
+
+            <button @click="$dispatch('tab-change', {tab: 'templates'})"
+                    :class="$store.tabs?.active === 'templates' ? 'border-purple-500 text-purple-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'"
+                    class="whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors tab-btn"
+                    data-tab="templates">
+                <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                </svg>
+                Plantillas
+                <span class="ml-2 bg-gray-100 text-gray-600 py-0.5 px-2 rounded-full text-xs">{{ templates|length }}</span>
+            </button>
+
+            <button @click="$dispatch('tab-change', {tab: 'schedules'})"
+                    :class="$store.tabs?.active === 'schedules' ? 'border-purple-500 text-purple-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'"
+                    class="whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors tab-btn"
+                    data-tab="schedules">
+                <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                </svg>
+                Programación Recurrente
+                <span class="ml-2 bg-gray-100 text-gray-600 py-0.5 px-2 rounded-full text-xs">{{ schedules|length }}</span>
+            </button>
+        </nav>
+    </div>
+
+    <!-- Tab Content -->
+    <div id="tab-content">
+        {% if active_tab == 'hashtags' %}
+            {% include 'components/hashtag_list.html' %}
+        {% elif active_tab == 'templates' %}
+            {% include 'components/template_list.html' %}
+        {% elif active_tab == 'schedules' %}
+            {% include 'components/schedule_list.html' %}
+        {% else %}
+            {% include 'components/hashtag_list.html' %}
+        {% endif %}
+    </div>
 </div>
+
+<script>
+    // Initialize Alpine store with tab state
+    document.addEventListener('alpine:init', () => {
+        Alpine.store('tabs', {
+            active: 'hashtags'
+        });
+    });
+
+    // Handle tab change events
+    document.addEventListener('tab-change', (event) => {
+        Alpine.store('tabs').active = event.detail.tab;
+    });
+</script>

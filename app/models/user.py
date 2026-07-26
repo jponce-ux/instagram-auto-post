@@ -19,3 +19,6 @@ class User(Base):
     instagram_accounts = relationship("InstagramAccount", back_populates="user")
     media_files = relationship("MediaFile", back_populates="user")
     posts = relationship("Post", back_populates="user")
+    hashtag_collections = relationship("HashtagCollection", back_populates="user")
+    content_templates = relationship("ContentTemplate", back_populates="user")
+    recurring_schedules = relationship("RecurringSchedule", back_populates="user")

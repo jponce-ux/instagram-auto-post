@@ -1,0 +1,95 @@
+{# Hashtag Collections Component #}
+<div class="space-y-6" x-data="{
+    showForm: false,
+    editingId: null,
+    async createHashtag() {
+        const form = document.getElementById('hashtag-form');
+        const formData = new FormData(form);
+        const response = await fetch('/dashboard/automation/hashtags', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams(formData)
+        });
+        if (response.ok) {
+            this.showForm = false;
+            document.getElementById('hashtag-form').reset();
+            htmx.ajax('GET', '/dashboard/automation', {target:'#main-content', swap:'innerHTML'});
+        }
+    },
+    async deleteHashtag(id) {
+        if (!confirm('¿Eliminar esta colección de hashtags?')) return;
+        const response = await fetch(`/dashboard/automation/hashtags/${id}`, { method: 'DELETE' });
+        if (response.ok) {
+            htmx.ajax('GET', '/dashboard/automation', {target:'#main-content', swap:'innerHTML'});
+        }
+    }
+}">
+    <!-- Create Button -->
+    <div class="flex justify-end">
+        <button @click="showForm = !showForm"
+                class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500">
+            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
+            </svg>
+            Nueva Colección
+        </button>
+    </div>
+
+    <!-- Create Form -->
+    <div x-show="showForm" class="bg-white rounded-lg shadow p-6">
+        <form id="hashtag-form" @submit.prevent="createHashtag()">
+            <div class="space-y-4">
+                <div>
+                    <label for="name" class="block text-sm font-medium text-gray-700">Nombre</label>
+                    <input type="text" name="name" id="name" required
+                           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
+                           placeholder="Mis hashtags favoritos">
+                </div>
+                <div>
+                    <label for="hashtags" class="block text-sm font-medium text-gray-700">Hashtags</label>
+                    <textarea name="hashtags" id="hashtags" rows="3" required
+                              class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
+                              placeholder="#travel #photography #nature (separados por espacios o comas)"></textarea>
+                    <p class="mt-1 text-xs text-gray-500">Separate hashtags with spaces or commas</p>
+                </div>
+                <div class="flex justify-end">
+                    <button type="button" @click="showForm = false" class="mr-3 text-sm text-gray-600 hover:text-gray-800">Cancelar</button>
+                    <button type="submit" class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-purple-600 hover:bg-purple-700">
+                        Crear Colección
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+
+    <!-- List -->
+    {% if hashtags and hashtags|length > 0 %}
+    <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {% for collection in hashtags %}
+        <div class="bg-white rounded-lg shadow hover:shadow-md transition-shadow p-4">
+            <div class="flex items-start justify-between">
+                <div class="flex-1 min-w-0">
+                    <h3 class="text-sm font-medium text-gray-900 truncate">{{ collection.name }}</h3>
+                    <p class="mt-1 text-xs text-gray-500">{{ collection.hashtags }}</p>
+                </div>
+                <button @click="deleteHashtag({{ collection.id }})"
+                        class="ml-2 text-gray-400 hover:text-red-500">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <!-- Empty State -->
+    <div class="text-center py-12 bg-white rounded-lg shadow">
+        <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14"/>
+        </svg>
+        <h3 class="mt-4 text-sm font-medium text-gray-900">No hay colecciones de hashtags</h3>
+        <p class="mt-1 text-sm text-gray-500">Crea una colección para reutilizar hashtags en tus posts.</p>
+    </div>
+    {% endif %}
+</div>

@@ -1,0 +1,222 @@
+{# Recurring Schedules Component #}
+<div class="space-y-6" x-data="{
+    showForm: false,
+    editingId: null,
+    frequencyType: 'daily',
+    async createSchedule() {
+        const form = document.getElementById('schedule-form');
+        const formData = new FormData(form);
+        const response = await fetch('/dashboard/automation/schedules', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams(formData)
+        });
+        if (response.ok) {
+            this.showForm = false;
+            document.getElementById('schedule-form').reset();
+            htmx.ajax('GET', '/dashboard/automation', {target:'#main-content', swap:'innerHTML'});
+        } else {
+            const data = await response.json();
+            alert(data.error || 'Error creating schedule');
+        }
+    },
+    async pauseSchedule(id) {
+        const response = await fetch(`/dashboard/automation/schedules/${id}/pause`, { method: 'POST' });
+        if (response.ok) {
+            htmx.ajax('GET', '/dashboard/automation', {target:'#main-content', swap:'innerHTML'});
+        }
+    },
+    async resumeSchedule(id) {
+        const response = await fetch(`/dashboard/automation/schedules/${id}/resume`, { method: 'POST' });
+        if (response.ok) {
+            htmx.ajax('GET', '/dashboard/automation', {target:'#main-content', swap:'innerHTML'});
+        }
+    },
+    async deleteSchedule(id) {
+        if (!confirm('¿Eliminar esta programación recurrente?')) return;
+        const response = await fetch(`/dashboard/automation/schedules/${id}`, { method: 'DELETE' });
+        if (response.ok) {
+            htmx.ajax('GET', '/dashboard/automation', {target:'#main-content', swap:'innerHTML'});
+        }
+    }
+}">
+    <!-- Create Button -->
+    <div class="flex justify-end">
+        <button @click="showForm = !showForm"
+                class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500">
+            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
+            </svg>
+            Nueva Programación
+        </button>
+    </div>
+
+    <!-- Create Form -->
+    <div x-show="showForm" class="bg-white rounded-lg shadow p-6">
+        <form id="schedule-form" @submit.prevent="createSchedule()">
+            <div class="space-y-4">
+                <!-- Account Selection -->
+                <div>
+                    <label for="ig_account_id" class="block text-sm font-medium text-gray-700">Cuenta de Instagram</label>
+                    <select name="ig_account_id" id="ig_account_id" required
+                            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm">
+                        {% if accounts %}
+                            {% for account in accounts %}
+                            <option value="{{ account.id }}">{{ account.username or account.instagram_account_id }}</option>
+                            {% endfor %}
+                        {% else %}
+                        <option value="">No hay cuentas conectadas</option>
+                        {% endif %}
+                    </select>
+                </div>
+
+                <!-- Frequency -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Frecuencia</label>
+                    <div class="mt-2 flex gap-4">
+                        <label class="inline-flex items-center">
+                            <input type="radio" name="frequency" value="daily" x-model="frequencyType" required
+                                   class="form-radio text-purple-600 focus:ring-purple-500">
+                            <span class="ml-2 text-sm text-gray-700">Diaria</span>
+                        </label>
+                        <label class="inline-flex items-center">
+                            <input type="radio" name="frequency" value="weekly" x-model="frequencyType"
+                                   class="form-radio text-purple-600 focus:ring-purple-500">
+                            <span class="ml-2 text-sm text-gray-700">Semanal</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Day of Week (only for weekly) -->
+                <div x-show="frequencyType === 'weekly'">
+                    <label for="day_of_week" class="block text-sm font-medium text-gray-700">Día de la semana</label>
+                    <select name="day_of_week" id="day_of_week"
+                            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm">
+                        <option value="0">Lunes</option>
+                        <option value="1">Martes</option>
+                        <option value="2">Miércoles</option>
+                        <option value="3">Jueves</option>
+                        <option value="4">Viernes</option>
+                        <option value="5">Sábado</option>
+                        <option value="6">Domingo</option>
+                    </select>
+                </div>
+
+                <!-- Time of Day -->
+                <div>
+                    <label for="time_of_day" class="block text-sm font-medium text-gray-700">Hora del día</label>
+                    <input type="time" name="time_of_day" id="time_of_day" required
+                           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
+                           value="09:00">
+                </div>
+
+                <!-- Template Selection (Optional) -->
+                <div>
+                    <label for="template_id" class="block text-sm font-medium text-gray-700">Plantilla (opcional)</label>
+                    <select name="template_id" id="template_id"
+                            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm">
+                        <option value="">Sin plantilla</option>
+                        {% if templates %}
+                            {% for tmpl in templates %}
+                            <option value="{{ tmpl.id }}">{{ tmpl.name }}</option>
+                            {% endfor %}
+                        {% endif %}
+                    </select>
+                </div>
+
+                <!-- Hashtag Collection (Optional) -->
+                <div>
+                    <label for="hashtag_collection_id" class="block text-sm font-medium text-gray-700">Colección de hashtags (opcional)</label>
+                    <select name="hashtag_collection_id" id="hashtag_collection_id"
+                            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm">
+                        <option value="">Sin hashtags</option>
+                        {% if hashtags %}
+                            {% for collection in hashtags %}
+                            <option value="{{ collection.id }}">{{ collection.name }}</option>
+                            {% endfor %}
+                        {% endif %}
+                    </select>
+                </div>
+
+                <div class="flex justify-end">
+                    <button type="button" @click="showForm = false" class="mr-3 text-sm text-gray-600 hover:text-gray-800">Cancelar</button>
+                    <button type="submit" class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-purple-600 hover:bg-purple-700">
+                        Crear Programación
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+
+    <!-- List -->
+    {% if schedules and schedules|length > 0 %}
+    <div class="space-y-4">
+        {% for schedule in schedules %}
+        <div class="bg-white rounded-lg shadow hover:shadow-md transition-shadow p-4">
+            <div class="flex items-center justify-between">
+                <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-2">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium"
+                              :class="schedule.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'">
+                            {{ 'Activo' if schedule.is_active else 'Pausado' }}
+                        </span>
+                        <span class="text-sm font-medium text-gray-900">
+                            {{ schedule.frequency|title }} a las {{ schedule.time_of_day.strftime('%H:%M') if schedule.time_of_day else 'N/A' }}
+                        </span>
+                        {% if schedule.frequency == 'weekly' and schedule.day_of_week is not none %}
+                        <span class="text-xs text-gray-500">
+                            ({{ ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'][schedule.day_of_week] }})
+                        </span>
+                        {% endif %}
+                    </div>
+                    <div class="mt-1 flex items-center gap-4 text-xs text-gray-500">
+                        {% if schedule.template_id %}
+                        <span>📄 Plantilla #{{ schedule.template_id }}</span>
+                        {% endif %}
+                        {% if schedule.hashtag_collection_id %}
+                        <span>#{{ schedule.hashtag_collection_id }}</span>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="flex items-center gap-2">
+                    {% if schedule.is_active %}
+                    <button @click="pauseSchedule({{ schedule.id }})"
+                            class="inline-flex items-center justify-center p-2 rounded-md text-gray-400 hover:text-yellow-600 hover:bg-yellow-50 transition-colors"
+                            title="Pausar">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                    </button>
+                    {% else %}
+                    <button @click="resumeSchedule({{ schedule.id }})"
+                            class="inline-flex items-center justify-center p-2 rounded-md text-gray-400 hover:text-green-600 hover:bg-green-50 transition-colors"
+                            title="Reanudar">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                    </button>
+                    {% endif %}
+                    <button @click="deleteSchedule({{ schedule.id }})"
+                            class="inline-flex items-center justify-center p-2 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                            title="Eliminar">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <!-- Empty State -->
+    <div class="text-center py-12 bg-white rounded-lg shadow">
+        <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+        </svg>
+        <h3 class="mt-4 text-sm font-medium text-gray-900">No hay programaciones recurrentes</h3>
+        <p class="mt-1 text-sm text-gray-500">Crea una programación para auto-crear posts periódicamente.</p>
+    </div>
+    {% endif %}
+</div>
