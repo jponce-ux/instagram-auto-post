@@ -194,7 +194,7 @@ function renderSummaryCards(metrics, trends) {
 
     const metricCards = [
         { label: 'Alcance', value: metrics.reach, trend: trends?.reach, icon: 'users' },
-        { label: 'Impresiones', value: metrics.impressions, trend: trends?.impressions, icon: 'eye' },
+        { label: 'Interacciones', value: metrics.total_interactions, trend: trends?.total_interactions, icon: 'eye' },
         { label: 'Visitas al Perfil', value: metrics.profile_views, trend: trends?.profile_views, icon: 'user' },
         { label: 'Seguidores', value: metrics.follower_count, trend: trends?.follower_count, icon: 'heart' },
     ];
@@ -292,7 +292,7 @@ function renderTimelineChart(timelineData) {
     const chartDatasets = [];
 
     const metricConfig = [
-        { key: 'impressions', label: 'Impresiones', color: 'rgba(147, 51, 234, 1)', bg: 'rgba(147, 51, 234, 0.1)' },
+        { key: 'total_interactions', label: 'Interacciones', color: 'rgba(147, 51, 234, 1)', bg: 'rgba(147, 51, 234, 0.1)' },
         { key: 'reach', label: 'Alcance', color: 'rgba(59, 130, 246, 1)', bg: 'rgba(59, 130, 246, 0.1)' },
         { key: 'profile_views', label: 'Visitas al Perfil', color: 'rgba(34, 197, 94, 1)', bg: 'rgba(34, 197, 94, 0.1)' },
         { key: 'follower_count', label: 'Seguidores', color: 'rgba(236, 72, 153, 1)', bg: 'rgba(236, 72, 153, 0.1)' },

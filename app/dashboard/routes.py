@@ -12,7 +12,7 @@ from app.auth.dependencies import get_current_user_optional
 from app.models.user import User
 from app.dashboard.service import get_user_accounts, get_user_posts, create_post, get_post_image_url, retry_post
 from app.services.sse import sse_manager, POST_UPDATE_CHANNEL, ACCOUNT_UPDATE_CHANNEL
-from app.services.metrics import metrics_service
+from app.services.metrics import metrics_service, TokenError, APIError
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 templates = Jinja2Templates(directory="app/templates")
@@ -358,11 +358,23 @@ async def get_account_analytics(
             access_token=account.access_token,
         )
         return JSONResponse(content=result)
-    except Exception as e:
-        logger.error(f"Error fetching account analytics: {e}")
+    except TokenError as e:
+        logger.error(f"Token error fetching account analytics: {e}")
+        return JSONResponse(
+            status_code=401,
+            content={"error": "Instagram session expired. Please reconnect your account."},
+        )
+    except APIError as e:
+        logger.error(f"API error fetching account analytics: {e}")
         return JSONResponse(
             status_code=502,
             content={"error": "Analytics temporarily unavailable. Please try again later."},
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error fetching account analytics: {e}", exc_info=True)
+        return JSONResponse(
+            status_code=500,
+            content={"error": "An unexpected error occurred. Please try again later."},
         )
 
 
@@ -418,9 +430,21 @@ async def get_media_analytics(
         result["post_id"] = post.id
         result["ig_media_id"] = post.ig_media_id
         return JSONResponse(content=result)
-    except Exception as e:
-        logger.error(f"Error fetching media analytics for post {post_id}: {e}")
+    except TokenError as e:
+        logger.error(f"Token error fetching media analytics for post {post_id}: {e}")
+        return JSONResponse(
+            status_code=401,
+            content={"error": "Instagram session expired. Please reconnect your account."},
+        )
+    except APIError as e:
+        logger.error(f"API error fetching media analytics for post {post_id}: {e}")
         return JSONResponse(
             status_code=502,
             content={"error": "Analytics temporarily unavailable. Please try again later."},
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error fetching media analytics for post {post_id}: {e}", exc_info=True)
+        return JSONResponse(
+            status_code=500,
+            content={"error": "An unexpected error occurred. Please try again later."},
         )

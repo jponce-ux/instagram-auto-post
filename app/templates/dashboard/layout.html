@@ -631,7 +631,7 @@ function renderAccountMetrics(metrics, isStale = false) {
     const borderClass = isStale ? 'border-amber-200 bg-amber-50' : 'border-gray-200 bg-white';
 
     const metricCards = [
-        { label: 'Impresiones', value: metrics.impressions, icon: 'eye' },
+        { label: 'Interacciones', value: metrics.total_interactions, icon: 'eye' },
         { label: 'Alcance', value: metrics.reach, icon: 'users' },
         { label: 'Visitas al Perfil', value: metrics.profile_views, icon: 'user' },
         { label: 'Seguidores', value: metrics.follower_count, icon: 'heart' },

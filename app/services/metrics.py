@@ -34,7 +34,7 @@ class InstagramMetricsService:
     Service for fetching Instagram Graph API insights with Redis caching.
 
     Handles:
-    - Account-level metrics (impressions, reach, profile_views, follower_count)
+    - Account-level metrics (reach, profile_views, follower_count, total_interactions)
     - Media-level metrics (engagement, impressions, reach, saved, likes, comments)
     - Redis caching with configurable TTL
     - Token error detection and account deactivation
@@ -149,7 +149,10 @@ class InstagramMetricsService:
                 )
 
                 if response.status_code == 401 or response.status_code == 400:
-                    body = response.json() if response.content else {}
+                    try:
+                        body = response.json() if response.content else {}
+                    except json.JSONDecodeError:
+                        body = {}
                     error_type = body.get("error", {}).get("error_subcode", 0)
                     error_message = body.get("error", {}).get("message", "")
 
@@ -160,8 +163,17 @@ class InstagramMetricsService:
                             error_subcode=error_type,
                         )
 
+                    # Non-token 400/401 — log the full error for debugging
+                    logger.error(
+                        f"Instagram API error body: {endpoint} — "
+                        f"status={response.status_code}, body={response.text[:500]}"
+                    )
+
                 response.raise_for_status()
-                return response.json()
+                try:
+                    return response.json()
+                except json.JSONDecodeError:
+                    raise APIError(f"Invalid JSON response from API (status {response.status_code})")
 
         except httpx.TimeoutException:
             elapsed = time.monotonic() - start_time
@@ -175,6 +187,14 @@ class InstagramMetricsService:
                 f"status={e.response.status_code}, time={elapsed:.2f}s"
             )
             raise APIError(f"API error: {e.response.status_code}")
+
+        except httpx.RequestError as e:
+            elapsed = time.monotonic() - start_time
+            logger.error(
+                f"Instagram API request error: {endpoint} — "
+                f"{type(e).__name__}: {e}, time={elapsed:.2f}s"
+            )
+            raise APIError(f"Network error: {type(e).__name__}")
 
     @staticmethod
     def _is_token_error(error_subcode: int, error_message: str) -> bool:
@@ -261,7 +281,7 @@ class InstagramMetricsService:
         # Fetch from API with deduplication (T017)
         async def _fetch():
             params = {
-                "metric": "impressions,reach,profile_views,follower_count",
+                "metric": "reach,profile_views,follower_count,total_interactions",
                 "period": period,
             }
             if access_token:
@@ -365,7 +385,7 @@ class InstagramMetricsService:
 
             # Fetch current period metrics
             current_params = {
-                "metric": "impressions,reach,profile_views,follower_count",
+                "metric": "reach,profile_views,follower_count,total_interactions",
                 "period": period if period in ("day", "days_28") else "days_28",
             }
             current_response = await self._call_insights_api(
@@ -377,7 +397,7 @@ class InstagramMetricsService:
 
             # Fetch previous period metrics for trend calculation
             previous_params = {
-                "metric": "impressions,reach,profile_views,follower_count",
+                "metric": "reach,profile_views,follower_count,total_interactions",
                 "period": period if period in ("day", "days_28") else "days_28",
                 "since": str(previous_since),
                 "until": str(previous_until),
@@ -573,7 +593,7 @@ class InstagramMetricsService:
             Dict with 'labels' (date strings) and 'datasets' (metric arrays)
         """
         params = {
-            "metric": "impressions,reach,profile_views,follower_count",
+            "metric": "reach,profile_views,follower_count,total_interactions",
             "period": "day",
             "since": str(since),
             "until": str(until),
@@ -610,7 +630,7 @@ class InstagramMetricsService:
 
         # Build aligned datasets
         datasets = {}
-        for metric_name in ["impressions", "reach", "profile_views", "follower_count"]:
+        for metric_name in ["total_interactions", "reach", "profile_views", "follower_count"]:
             datasets[metric_name] = [
                 metric_values.get(metric_name, {}).get(date, 0)
                 for date in sorted_dates
@@ -625,7 +645,7 @@ class InstagramMetricsService:
     def _parse_account_metrics(response: dict) -> dict:
         """Parse account insights API response into flat metrics dict."""
         metrics = {
-            "impressions": 0,
+            "total_interactions": 0,
             "reach": 0,
             "profile_views": 0,
             "follower_count": 0,

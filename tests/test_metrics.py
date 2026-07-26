@@ -66,7 +66,7 @@ class TestGetAccountAnalytics:
             "account_id": 1,
             "instagram_account_id": "12345",
             "period": "days_28",
-            "metrics": {"impressions": 1000, "reach": 800, "profile_views": 50, "follower_count": 200},
+            "metrics": {"total_interactions": 1000, "reach": 800, "profile_views": 50, "follower_count": 200},
             "cached": False,
             "fetched_at": "2026-06-30T10:00:00Z",
             "stale": False,
@@ -82,7 +82,7 @@ class TestGetAccountAnalytics:
 
         assert result["cached"] is True
         assert result["stale"] is False
-        assert result["metrics"]["impressions"] == 1000
+        assert result["metrics"]["total_interactions"] == 1000
         # API should NOT be called
         assert not hasattr(service, "_call_insights_api_called")
 
@@ -93,7 +93,7 @@ class TestGetAccountAnalytics:
 
         api_response = {
             "data": [
-                {"name": "impressions", "values": [{"value": 5000}]},
+                {"name": "total_interactions", "values": [{"value": 5000}]},
                 {"name": "reach", "values": [{"value": 3500}]},
                 {"name": "profile_views", "value": 120},
                 {"name": "follower_count", "values": [{"value": 1500}]},
@@ -112,7 +112,7 @@ class TestGetAccountAnalytics:
 
             assert result["cached"] is False
             assert result["stale"] is False
-            assert result["metrics"]["impressions"] == 5000
+            assert result["metrics"]["total_interactions"] == 5000
             assert result["metrics"]["reach"] == 3500
             assert result["metrics"]["profile_views"] == 120
             assert result["metrics"]["follower_count"] == 1500
@@ -144,7 +144,7 @@ class TestGetAccountAnalytics:
             "account_id": 1,
             "instagram_account_id": "12345",
             "period": "days_28",
-            "metrics": {"impressions": 900, "reach": 700, "profile_views": 40, "follower_count": 190},
+            "metrics": {"total_interactions": 900, "reach": 700, "profile_views": 40, "follower_count": 190},
             "cached": False,
             "fetched_at": "2026-06-29T10:00:00Z",
             "stale": False,
@@ -173,7 +173,7 @@ class TestGetAccountAnalytics:
 
             assert result["cached"] is True
             assert result["stale"] is True
-            assert result["metrics"]["impressions"] == 900
+            assert result["metrics"]["total_interactions"] == 900
 
     @pytest.mark.asyncio
     async def test_api_error_no_cache_raises(self, service, mock_redis):
@@ -361,14 +361,14 @@ class TestParseAccountMetrics:
     def test_full_response(self):
         response = {
             "data": [
-                {"name": "impressions", "values": [{"value": 10000}]},
+                {"name": "total_interactions", "values": [{"value": 10000}]},
                 {"name": "reach", "values": [{"value": 7500}]},
                 {"name": "profile_views", "value": 200},
                 {"name": "follower_count", "values": [{"value": 5000}]},
             ]
         }
         result = InstagramMetricsService._parse_account_metrics(response)
-        assert result["impressions"] == 10000
+        assert result["total_interactions"] == 10000
         assert result["reach"] == 7500
         assert result["profile_views"] == 200
         assert result["follower_count"] == 5000
@@ -376,12 +376,12 @@ class TestParseAccountMetrics:
     def test_empty_response(self):
         response = {"data": []}
         result = InstagramMetricsService._parse_account_metrics(response)
-        assert result == {"impressions": 0, "reach": 0, "profile_views": 0, "follower_count": 0}
+        assert result == {"total_interactions": 0, "reach": 0, "profile_views": 0, "follower_count": 0}
 
     def test_missing_metrics(self):
-        response = {"data": [{"name": "impressions", "values": [{"value": 500}]}]}
+        response = {"data": [{"name": "total_interactions", "values": [{"value": 500}]}]}
         result = InstagramMetricsService._parse_account_metrics(response)
-        assert result["impressions"] == 500
+        assert result["total_interactions"] == 500
         assert result["reach"] == 0  # Missing metric defaults to 0
 
 
@@ -433,7 +433,7 @@ class TestConcurrentDeduplication:
             call_count += 1
             import asyncio
             await asyncio.sleep(0.1)
-            return {"data": [{"name": "impressions", "values": [{"value": 100}]}]}
+            return {"data": [{"name": "total_interactions", "values": [{"value": 100}]}]}
 
         with patch.object(service, "_call_insights_api", new=slow_api):
             import asyncio
@@ -447,7 +447,7 @@ class TestConcurrentDeduplication:
             results = await asyncio.gather(task1, task2)
 
             # Both should succeed with same data
-            assert results[0]["metrics"]["impressions"] == 100
-            assert results[1]["metrics"]["impressions"] == 100
+            assert results[0]["metrics"]["total_interactions"] == 100
+            assert results[1]["metrics"]["total_interactions"] == 100
             # API should only be called once due to deduplication
             assert call_count == 1
