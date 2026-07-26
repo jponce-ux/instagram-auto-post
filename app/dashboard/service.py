@@ -276,3 +276,245 @@ async def create_post(
         logger.warning(f"Failed to publish SSE event for new post {post.id}: {e}")
 
     return post
+
+
+async def create_scheduled_post(
+    db: AsyncSession,
+    user: User,
+    file: UploadFile,
+    caption: str,
+    scheduled_at: datetime,
+    ig_account_id: int | None = None,
+) -> Post:
+    """
+    Create a new scheduled post with future publish date.
+
+    1. Upload file to MinIO storage
+    2. Generate and upload thumbnail (for image files)
+    3. Create MediaFile record with both original and thumbnail keys
+    4. Create Post record with SCHEDULED status and user-specified scheduled_at
+    5. Publish SSE event for real-time dashboard update
+
+    Args:
+        db: AsyncSession for database operations
+        user: The authenticated user
+        file: UploadFile with the image/video
+        caption: Post caption text
+        scheduled_at: Future datetime when post should be published
+        ig_account_id: Optional specific Instagram account ID (uses first active if not provided)
+
+    Returns:
+        Created Post with SCHEDULED status
+
+    Raises:
+        ValueError: If no Instagram account connected or validation fails
+    """
+    # Validate scheduled_at is in the future
+    now = datetime.now(timezone.utc)
+    if scheduled_at <= now:
+        raise ValueError("Scheduled date must be in the future")
+
+    # Read file content once for both upload and thumbnail generation
+    content = await file.read()
+    file.file.seek(0)
+
+    # Upload original to MinIO
+    storage_key = await storage_service.upload_file(file, user.id)
+
+    # Generate and upload thumbnail for image files
+    thumbnail_key = None
+    content_type = file.content_type or "application/octet-stream"
+    if content_type.startswith("image/"):
+        thumbnail_bytes = storage_service.generate_thumbnail(content, content_type)
+        if thumbnail_bytes:
+            thumbnail_key = await storage_service.upload_thumbnail(thumbnail_bytes, storage_key)
+            if thumbnail_key:
+                logger.info(
+                    f"Thumbnail generated for scheduled post: "
+                    f"{len(thumbnail_bytes)} bytes -> {thumbnail_key}"
+                )
+
+    # Create media file record with both keys
+    media_file = MediaFile(
+        key=storage_key,
+        thumbnail_key=thumbnail_key,
+        original_filename=file.filename or "upload",
+        content_type=content_type,
+        user_id=user.id,
+    )
+    db.add(media_file)
+    await db.flush()
+
+    # Get Instagram account
+    if ig_account_id is None:
+        accounts = await get_user_accounts(db, user)
+        if not accounts:
+            raise ValueError("No Instagram account connected. Connect an account before creating posts.")
+        active_accounts = [acc for acc in accounts if acc.is_active]
+        if not active_accounts:
+            raise ValueError("Instagram account is inactive. Please reconnect your account.")
+        ig_account_id = active_accounts[0].id
+    else:
+        # Verify the specified account belongs to user and is active
+        result = await db.execute(
+            select(InstagramAccount).where(
+                InstagramAccount.id == ig_account_id,
+                InstagramAccount.user_id == user.id,
+            )
+        )
+        ig_account = result.scalar_one_or_none()
+        if not ig_account:
+            raise ValueError("Instagram account not found")
+        if not ig_account.is_active:
+            raise ValueError("Instagram account is inactive. Please reconnect your account.")
+
+    # Create post record with SCHEDULED status
+    post = Post(
+        user_id=user.id,
+        ig_account_id=ig_account_id,
+        media_file_id=media_file.id,
+        caption=caption,
+        status=PostStatus.SCHEDULED,
+        scheduled_at=scheduled_at,
+    )
+    db.add(post)
+    await db.commit()
+    await db.refresh(post)
+
+    logger.info(f"Created scheduled post {post.id} for {scheduled_at.isoformat()}")
+
+    # Publish SSE event so agenda shows the new post immediately
+    try:
+        from app.services.sse import sse_manager, POST_UPDATE_CHANNEL
+        await sse_manager.publish(POST_UPDATE_CHANNEL, {
+            "post_id": post.id,
+            "status": "scheduled",
+            "user_id": user.id,
+        })
+    except Exception as e:
+        logger.warning(f"Failed to publish SSE event for scheduled post {post.id}: {e}")
+
+    return post
+
+
+async def get_scheduled_posts(db: AsyncSession, user: User) -> list[Post]:
+    """
+    Fetch all scheduled posts for a user, ordered by scheduled_at (nearest first).
+
+    Args:
+        db: AsyncSession for database operations
+        user: The authenticated user
+
+    Returns:
+        List of Post objects with SCHEDULED status
+    """
+    result = await db.execute(
+        select(Post)
+        .where(Post.user_id == user.id, Post.status == PostStatus.SCHEDULED)
+        .order_by(Post.scheduled_at.asc())
+    )
+    return list(result.scalars().all())
+
+
+async def update_scheduled_post(
+    db: AsyncSession,
+    user: User,
+    post_id: int,
+    caption: str | None = None,
+    scheduled_at: datetime | None = None,
+) -> Post:
+    """
+    Update a scheduled post's caption or scheduled time.
+
+    Args:
+        db: AsyncSession for database operations
+        user: The authenticated user
+        post_id: ID of the post to update
+        caption: New caption text (if provided)
+        scheduled_at: New scheduled time (if provided)
+
+    Returns:
+        Updated Post
+
+    Raises:
+        ValueError: If post not found, not scheduled, or validation fails
+    """
+    result = await db.execute(
+        select(Post).where(
+            Post.id == post_id,
+            Post.user_id == user.id,
+            Post.status == PostStatus.SCHEDULED,
+        )
+    )
+    post = result.scalar_one_or_none()
+    if not post:
+        raise ValueError("Scheduled post not found")
+
+    # Validate new scheduled_at if provided
+    if scheduled_at is not None:
+        now = datetime.now(timezone.utc)
+        if scheduled_at <= now:
+            raise ValueError("Scheduled date must be in the future")
+        post.scheduled_at = scheduled_at
+
+    if caption is not None:
+        post.caption = caption
+
+    await db.commit()
+    await db.refresh(post)
+
+    logger.info(f"Updated scheduled post {post.id}")
+
+    # Publish SSE event
+    try:
+        from app.services.sse import sse_manager, POST_UPDATE_CHANNEL
+        await sse_manager.publish(POST_UPDATE_CHANNEL, {
+            "post_id": post.id,
+            "status": "scheduled",
+            "user_id": user.id,
+            "updated": True,
+        })
+    except Exception as e:
+        logger.warning(f"Failed to publish SSE event for updated post {post.id}: {e}")
+
+    return post
+
+
+async def delete_scheduled_post(db: AsyncSession, user: User, post_id: int) -> None:
+    """
+    Delete a scheduled post.
+
+    Args:
+        db: AsyncSession for database operations
+        user: The authenticated user
+        post_id: ID of the post to delete
+
+    Raises:
+        ValueError: If post not found, not scheduled, or already processing
+    """
+    result = await db.execute(
+        select(Post).where(
+            Post.id == post_id,
+            Post.user_id == user.id,
+            Post.status == PostStatus.SCHEDULED,
+        )
+    )
+    post = result.scalar_one_or_none()
+    if not post:
+        raise ValueError("Scheduled post not found")
+
+    await db.delete(post)
+    await db.commit()
+
+    logger.info(f"Deleted scheduled post {post_id}")
+
+    # Publish SSE event
+    try:
+        from app.services.sse import sse_manager, POST_UPDATE_CHANNEL
+        await sse_manager.publish(POST_UPDATE_CHANNEL, {
+            "post_id": post_id,
+            "status": "deleted",
+            "user_id": user.id,
+        })
+    except Exception as e:
+        logger.warning(f"Failed to publish SSE event for deleted post {post_id}: {e}")

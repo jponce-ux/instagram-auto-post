@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 from app.core.database import get_db
 from app.auth.dependencies import get_current_user_optional
 from app.models.user import User
-from app.dashboard.service import get_user_accounts, get_user_posts, create_post, get_post_image_url, retry_post
+from app.dashboard.service import get_user_accounts, get_user_posts, create_post, get_post_image_url, retry_post, create_scheduled_post, get_scheduled_posts, update_scheduled_post, delete_scheduled_post
 from app.services.sse import sse_manager, POST_UPDATE_CHANNEL, ACCOUNT_UPDATE_CHANNEL
 from app.services.metrics import metrics_service, TokenError, APIError
 
@@ -131,18 +131,164 @@ async def schedule_page(
     if user is None:
         return RedirectResponse(url="/auth/login", status_code=303)
 
+    accounts = await get_user_accounts(db, user)
+    scheduled_posts = await get_scheduled_posts(db, user)
+
+    # Generate presigned URLs for each scheduled post's thumbnail
+    for post in scheduled_posts:
+        post.image_urls = await get_post_image_url(db, user, post)
+
     # HTMX requests return only the content fragment
     if _is_htmx_request(request):
         return templates.TemplateResponse(
             request=request,
             name="dashboard/partials/schedule-content.html",
-            context={"user": user},
+            context={"user": user, "accounts": accounts, "scheduled_posts": scheduled_posts},
         )
 
     return templates.TemplateResponse(
         request=request,
         name="dashboard/schedule.html",
-        context={"user": user},
+        context={"user": user, "accounts": accounts, "scheduled_posts": scheduled_posts},
+    )
+
+
+@router.post("/schedule/post")
+async def create_scheduled_post_endpoint(
+    request: Request,
+    caption: str = Form(""),
+    scheduled_date: str = Form(...),
+    scheduled_time: str = Form(...),
+    ig_account_id: int = Form(None),
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a new scheduled post with future publish date.
+
+    Returns HTMX trigger to refresh the agenda list on success.
+    """
+    user = await get_current_user_optional(request, db)
+    if user is None:
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+
+    if not file or not file.filename:
+        return JSONResponse(status_code=400, content={"error": "Image is required"})
+
+    # Parse scheduled datetime from form data
+    try:
+        from datetime import datetime, timezone
+        scheduled_dt = datetime.strptime(
+            f"{scheduled_date} {scheduled_time}",
+            "%Y-%m-%d %H:%M"
+        ).replace(tzinfo=timezone.utc)
+    except ValueError:
+        return JSONResponse(status_code=400, content={"error": "Invalid date/time format"})
+
+    try:
+        post = await create_scheduled_post(
+            db=db,
+            user=user,
+            file=file,
+            caption=caption,
+            scheduled_at=scheduled_dt,
+            ig_account_id=ig_account_id,
+        )
+    except ValueError as e:
+        return JSONResponse(status_code=400, content={"error": str(e)})
+
+    # Return HTMX trigger to refresh the agenda list
+    return JSONResponse(
+        content={
+            "success": True,
+            "post": {
+                "id": post.id,
+                "caption": post.caption,
+                "status": post.status.value,
+                "scheduled_at": post.scheduled_at.isoformat() if post.scheduled_at else None,
+            },
+            "hx-trigger": "refreshScheduleList",
+        }
+    )
+
+
+@router.patch("/schedule/post/{post_id}")
+async def update_scheduled_post_endpoint(
+    post_id: int,
+    request: Request,
+    caption: str = Form(None),
+    scheduled_date: str = Form(None),
+    scheduled_time: str = Form(None),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update a scheduled post's caption or scheduled time.
+
+    Returns HTMX trigger to refresh the agenda list on success.
+    """
+    user = await get_current_user_optional(request, db)
+    if user is None:
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+
+    # Parse scheduled datetime if provided
+    scheduled_at = None
+    if scheduled_date and scheduled_time:
+        try:
+            from datetime import datetime, timezone
+            scheduled_at = datetime.strptime(
+                f"{scheduled_date} {scheduled_time}",
+                "%Y-%m-%d %H:%M"
+            ).replace(tzinfo=timezone.utc)
+        except ValueError:
+            return JSONResponse(status_code=400, content={"error": "Invalid date/time format"})
+
+    try:
+        post = await update_scheduled_post(
+            db=db,
+            user=user,
+            post_id=post_id,
+            caption=caption,
+            scheduled_at=scheduled_at,
+        )
+    except ValueError as e:
+        return JSONResponse(status_code=400, content={"error": str(e)})
+
+    return JSONResponse(
+        content={
+            "success": True,
+            "post": {
+                "id": post.id,
+                "caption": post.caption,
+                "status": post.status.value,
+                "scheduled_at": post.scheduled_at.isoformat() if post.scheduled_at else None,
+            },
+            "hx-trigger": "refreshScheduleList",
+        }
+    )
+
+
+@router.delete("/schedule/post/{post_id}")
+async def delete_scheduled_post_endpoint(
+    post_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a scheduled post.
+
+    Returns HTMX trigger to refresh the agenda list on success.
+    """
+    user = await get_current_user_optional(request, db)
+    if user is None:
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+
+    try:
+        await delete_scheduled_post(db=db, user=user, post_id=post_id)
+    except ValueError as e:
+        return JSONResponse(status_code=400, content={"error": str(e)})
+
+    return JSONResponse(
+        content={
+            "success": True,
+            "hx-trigger": "refreshScheduleList",
+        }
     )
 
 

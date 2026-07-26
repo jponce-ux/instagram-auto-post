@@ -168,9 +168,11 @@ def check_scheduled_posts(self) -> dict:
     """
     Beat task: query for scheduled posts and dispatch processing tasks.
 
-    Runs every 60 seconds via Celery Beat. Finds posts with status=PENDING
-    and scheduled_at <= now(), transitions them to PROCESSING, and dispatches
+    Runs every 60 seconds via Celery Beat. Finds posts with status=SCHEDULED
+    and scheduled_at <= now(), transitions them to PENDING, and dispatches
     process_instagram_post for each.
+
+    Idempotent: skips posts that are already PENDING or PROCESSING.
     """
     from datetime import datetime, timezone
     from sqlalchemy import select
@@ -184,7 +186,7 @@ def check_scheduled_posts(self) -> dict:
             stmt = (
                 select(Post)
                 .where(
-                    Post.status == PostStatus.PENDING,
+                    Post.status == PostStatus.SCHEDULED,
                     Post.scheduled_at <= datetime.now(timezone.utc),
                 )
                 .order_by(Post.scheduled_at.asc())

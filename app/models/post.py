@@ -7,6 +7,7 @@ from app.models.base import Base
 
 class PostStatus(str, enum.Enum):
     PENDING = "pending"
+    SCHEDULED = "scheduled"
     PROCESSING = "processing"
     PUBLISHED = "published"
     FAILED = "failed"

@@ -1,0 +1,190 @@
+{# Schedule post form component #}
+{# Used in the Agenda view for creating scheduled posts #}
+
+<form id="schedule-form" class="space-y-4"
+      hx-encoding="multipart/form-data"
+      hx-post="/dashboard/schedule/post"
+      hx-target="#form-message"
+      hx-swap="innerHTML">
+    
+    <!-- Image Upload -->
+    <div>
+        <label for="schedule-file" class="block text-sm font-medium text-gray-700 mb-1">
+            Imagen <span class="text-red-500">*</span>
+        </label>
+        <div id="schedule-drop-zone" class="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-lg hover:border-purple-400 transition-colors">
+            <div id="schedule-upload-placeholder" class="space-y-1 text-center">
+                <svg class="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48">
+                    <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <div class="flex text-sm text-gray-600">
+                    <label for="schedule-file" class="relative cursor-pointer bg-white rounded-md font-medium text-purple-600 hover:text-purple-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-purple-500">
+                        <span>Subir archivo</span>
+                        <input id="schedule-file" name="file" type="file" accept="image/*" class="sr-only" required onchange="previewScheduleImage(this)">
+                    </label>
+                    <p class="pl-1">o arrastrar aquí</p>
+                </div>
+                <p class="text-xs text-gray-500">PNG, JPG, GIF hasta 10MB</p>
+            </div>
+            <div id="schedule-image-preview" class="hidden w-full">
+                <div class="relative inline-block">
+                    <img id="schedule-preview-img" src="" alt="Preview" class="max-h-48 mx-auto rounded-lg shadow-md">
+                    <button type="button" onclick="removeScheduleImage()" class="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                        </svg>
+                    </button>
+                </div>
+                <p id="schedule-file-name" class="mt-2 text-sm text-gray-600 text-center"></p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Caption -->
+    <div>
+        <label for="schedule-caption" class="block text-sm font-medium text-gray-700 mb-1">
+            Descripción
+        </label>
+        <textarea id="schedule-caption" name="caption" rows="3"
+                  class="shadow-sm focus:ring-purple-500 focus:border-purple-500 block w-full sm:text-sm border-gray-300 rounded-md px-4 py-2.5"
+                  placeholder="Escribe una descripción para tu publicación..."></textarea>
+        <p class="mt-1 text-xs text-gray-500">Opcional. La descripción puede estar vacía.</p>
+    </div>
+
+    <!-- Account Selector -->
+    <div>
+        <label for="schedule-account" class="block text-sm font-medium text-gray-700 mb-1">
+            Cuenta de Instagram
+        </label>
+        <select id="schedule-account" name="ig_account_id"
+                class="shadow-sm focus:ring-purple-500 focus:border-purple-500 block w-full sm:text-sm border-gray-300 rounded-md px-4 py-2.5">
+            <option value="">Selecciona una cuenta</option>
+            {% for account in accounts %}
+            <option value="{{ account.id }}">{{ account.username or account.instagram_account_id }}</option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <!-- Schedule Date/Time -->
+    <div class="grid grid-cols-2 gap-4">
+        <div>
+            <label for="schedule-date" class="block text-sm font-medium text-gray-700 mb-1">
+                Fecha <span class="text-red-500">*</span>
+            </label>
+            <input type="date" id="schedule-date" name="scheduled_date" required
+                   min="{{ min_date }}"
+                   class="shadow-sm focus:ring-purple-500 focus:border-purple-500 block w-full sm:text-sm border-gray-300 rounded-md px-4 py-2.5">
+        </div>
+        <div>
+            <label for="schedule-time" class="block text-sm font-medium text-gray-700 mb-1">
+                Hora <span class="text-red-500">*</span>
+            </label>
+            <input type="time" id="schedule-time" name="scheduled_time" required
+                   class="shadow-sm focus:ring-purple-500 focus:border-purple-500 block w-full sm:text-sm border-gray-300 rounded-md px-4 py-2.5">
+        </div>
+    </div>
+
+    <!-- Validation Message -->
+    <div id="schedule-validation" class="hidden text-sm text-red-600"></div>
+
+    <!-- Submit Button -->
+    <div>
+        <button type="submit" id="schedule-submit-btn"
+                class="w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 min-h-[44px]">
+            Programar Publicación
+        </button>
+    </div>
+
+    <!-- Form message area -->
+    <div id="form-message"></div>
+</form>
+
+<script>
+// Set minimum date to today
+document.addEventListener('DOMContentLoaded', function() {
+    const today = new Date();
+    const minDate = today.toISOString().split('T')[0];
+    document.getElementById('schedule-date').min = minDate;
+});
+
+function previewScheduleImage(input) {
+    if (input.files && input.files[0]) {
+        const file = input.files[0];
+        
+        if (!file.type.startsWith('image/')) {
+            showToast('error', 'Por favor selecciona una imagen válida');
+            return;
+        }
+        
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            document.getElementById('schedule-preview-img').src = e.target.result;
+            document.getElementById('schedule-file-name').textContent = file.name;
+            document.getElementById('schedule-upload-placeholder').classList.add('hidden');
+            document.getElementById('schedule-image-preview').classList.remove('hidden');
+        };
+        reader.readAsDataURL(file);
+    }
+}
+
+function removeScheduleImage() {
+    const input = document.getElementById('schedule-file');
+    input.value = '';
+    document.getElementById('schedule-preview-img').src = '';
+    document.getElementById('schedule-file-name').textContent = '';
+    document.getElementById('schedule-upload-placeholder').classList.remove('hidden');
+    document.getElementById('schedule-image-preview').classList.add('hidden');
+}
+
+// Drag and drop support
+const dropZone = document.getElementById('schedule-drop-zone');
+const fileInput = document.getElementById('schedule-file');
+
+dropZone.addEventListener('dragover', function(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    dropZone.classList.add('border-purple-400', 'bg-purple-50');
+});
+
+dropZone.addEventListener('dragleave', function(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    dropZone.classList.remove('border-purple-400', 'bg-purple-50');
+});
+
+dropZone.addEventListener('drop', function(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    dropZone.classList.remove('border-purple-400', 'bg-purple-50');
+    
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+        const file = e.dataTransfer.files[0];
+        if (file.type.startsWith('image/')) {
+            fileInput.files = e.dataTransfer.files;
+            previewScheduleImage(fileInput);
+        } else {
+            showToast('error', 'Por favor selecciona una imagen');
+        }
+    }
+});
+
+// Client-side validation
+document.getElementById('schedule-form').addEventListener('submit', function(e) {
+    const dateInput = document.getElementById('schedule-date');
+    const timeInput = document.getElementById('schedule-time');
+    const validation = document.getElementById('schedule-validation');
+    
+    const selectedDateTime = new Date(`${dateInput.value}T${timeInput.value}`);
+    const now = new Date();
+    
+    if (selectedDateTime <= now) {
+        e.preventDefault();
+        validation.textContent = 'La fecha y hora deben ser en el futuro';
+        validation.classList.remove('hidden');
+        return false;
+    }
+    
+    validation.classList.add('hidden');
+    return true;
+});
+</script>
