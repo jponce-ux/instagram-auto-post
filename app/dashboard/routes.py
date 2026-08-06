@@ -275,18 +275,22 @@ async def schedule_page(
     for post in scheduled_posts:
         post.image_urls = await get_post_image_url(db, user, post)
 
+    # Minimum selectable date for the schedule form (today, UTC, ISO format)
+    from datetime import datetime, timezone
+    min_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
     # HTMX requests return only the content fragment
     if _is_htmx_request(request):
         return templates.TemplateResponse(
             request=request,
             name="dashboard/partials/schedule-content.html",
-            context={"user": user, "accounts": accounts, "scheduled_posts": scheduled_posts},
+            context={"user": user, "accounts": accounts, "scheduled_posts": scheduled_posts, "min_date": min_date},
         )
 
     return templates.TemplateResponse(
         request=request,
         name="dashboard/schedule.html",
-        context={"user": user, "accounts": accounts, "scheduled_posts": scheduled_posts},
+        context={"user": user, "accounts": accounts, "scheduled_posts": scheduled_posts, "min_date": min_date},
     )
 
 
@@ -302,7 +306,8 @@ async def create_scheduled_post_endpoint(
 ):
     """Create a new scheduled post with future publish date.
 
-    Returns HTMX trigger to refresh the agenda list on success.
+    Returns JSON. Front-end refreshes the scheduled-posts list via
+    GET /dashboard/schedule/list (see refreshScheduledPosts()).
     """
     user = await get_current_user_optional(request, db)
     if user is None:
@@ -333,7 +338,6 @@ async def create_scheduled_post_endpoint(
     except ValueError as e:
         return JSONResponse(status_code=400, content={"error": str(e)})
 
-    # Return HTMX trigger to refresh the agenda list
     return JSONResponse(
         content={
             "success": True,
@@ -343,8 +347,34 @@ async def create_scheduled_post_endpoint(
                 "status": post.status.value,
                 "scheduled_at": post.scheduled_at.isoformat() if post.scheduled_at else None,
             },
-            "hx-trigger": "refreshScheduleList",
         }
+    )
+
+
+@router.get("/schedule/list")
+async def schedule_list_partial(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Return only the scheduled-posts list HTML fragment.
+
+    Used by the front-end after a successful create/update/delete to refresh
+    the right-side panel without a full page reload.
+    """
+    user = await get_current_user_optional(request, db)
+    if user is None:
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+
+    scheduled_posts = await get_scheduled_posts(db, user)
+
+    # Generate presigned URLs for each scheduled post's thumbnail
+    for post in scheduled_posts:
+        post.image_urls = await get_post_image_url(db, user, post)
+
+    return templates.TemplateResponse(
+        request=request,
+        name="dashboard/partials/scheduled_posts_list.html",
+        context={"user": user, "scheduled_posts": scheduled_posts},
     )
 
 
@@ -397,7 +427,6 @@ async def update_scheduled_post_endpoint(
                 "status": post.status.value,
                 "scheduled_at": post.scheduled_at.isoformat() if post.scheduled_at else None,
             },
-            "hx-trigger": "refreshScheduleList",
         }
     )
 
@@ -424,7 +453,6 @@ async def delete_scheduled_post_endpoint(
     return JSONResponse(
         content={
             "success": True,
-            "hx-trigger": "refreshScheduleList",
         }
     )
 
@@ -441,7 +469,7 @@ async def automation_page(
 
     # Fetch all automation data
     hashtags = await get_hashtag_collections(db, user)
-    templates = await get_content_templates(db, user)
+    content_templates = await get_content_templates(db, user)
     schedules = await get_recurring_schedules(db, user)
     accounts = await get_user_accounts(db, user)
     best_times = await calculate_best_times(db, user)
@@ -454,7 +482,7 @@ async def automation_page(
             context={
                 "user": user,
                 "hashtags": hashtags,
-                "templates": templates,
+                "templates": content_templates,
                 "schedules": schedules,
                 "accounts": accounts,
                 "best_times": best_times,
@@ -467,7 +495,7 @@ async def automation_page(
         context={
             "user": user,
             "hashtags": hashtags,
-            "templates": templates,
+            "templates": content_templates,
             "schedules": schedules,
             "accounts": accounts,
             "best_times": best_times,

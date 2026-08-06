@@ -111,18 +111,21 @@ class TestCheckScheduledPosts:
         self, mock_process_task, mock_session_class, mock_post_pending
     ):
         """Scenario: Query finds due posts
-        GIVEN posts exist with status PENDING and scheduled_at in the past
+        GIVEN posts exist with status=SCHEDULED and scheduled_at in the past
         WHEN check_scheduled_posts executes
-        THEN query returns posts where status=PENDING AND scheduled_at <= now()"""
+        THEN query returns posts where status=SCHEDULED AND scheduled_at <= now()
+        AND a process_instagram_post task is dispatched for each"""
         # Setup mock session
         mock_session = MagicMock()
         mock_session_class.return_value.__enter__ = Mock(return_value=mock_session)
         mock_session_class.return_value.__exit__ = Mock(return_value=False)
 
-        # Mock the query result
-        mock_result = MagicMock()
-        mock_result.scalars.return_value.all.return_value = [mock_post_pending]
-        mock_session.execute.return_value = mock_result
+        # SELECT returns [(id, user_id), ...]; UPDATE returns rowcount=1 (claimed)
+        select_result = MagicMock()
+        select_result.all.return_value = [(1, 10)]
+        update_result = MagicMock()
+        update_result.rowcount = 1
+        mock_session.execute.side_effect = [select_result, update_result]
 
         # Execute task
         result = check_scheduled_posts.run()
@@ -166,24 +169,26 @@ class TestCheckScheduledPosts:
         self, mock_process_task, mock_session_class, mock_post_pending
     ):
         """Scenario: Dispatch for single post
-        GIVEN one post is found with status=PENDING and scheduled_at <= now()
+        GIVEN one post is found with status=SCHEDULED and scheduled_at <= now()
         WHEN check_scheduled_posts runs
-        THEN process_instagram_post.delay(post_id) is called once"""
+        THEN the post is atomically claimed (UPDATE rowcount=1) and
+        process_instagram_post.delay(post_id) is called once"""
         # Setup mock session
         mock_session = MagicMock()
         mock_session_class.return_value.__enter__ = Mock(return_value=mock_session)
         mock_session_class.return_value.__exit__ = Mock(return_value=False)
 
-        # Mock the query result
-        mock_result = MagicMock()
-        mock_result.scalars.return_value.all.return_value = [mock_post_pending]
-        mock_session.execute.return_value = mock_result
+        # SELECT returns [(id, user_id)]; UPDATE returns rowcount=1 (claimed)
+        select_result = MagicMock()
+        select_result.all.return_value = [(1, 10)]
+        update_result = MagicMock()
+        update_result.rowcount = 1
+        mock_session.execute.side_effect = [select_result, update_result]
 
         # Execute task
         result = check_scheduled_posts.run()
 
-        # Verify status transition and dispatch
-        assert mock_post_pending.status == PostStatus.PROCESSING
+        # Verify atomic claim + dispatch
         mock_session.commit.assert_called()
         mock_process_task.delay.assert_called_once_with(1)
         assert result["dispatched"] == 1
@@ -196,22 +201,25 @@ class TestCheckScheduledPosts:
         """Scenario: Dispatch for multiple posts
         GIVEN multiple posts are found due for publishing
         WHEN check_scheduled_posts runs
-        THEN process_instagram_post.delay() is called for EACH post"""
-        # Create multiple posts
-        post2 = Mock(spec=Post)
-        post2.id = 2
-        post2.status = PostStatus.PENDING
-        post2.scheduled_at = datetime.now(timezone.utc) - timedelta(minutes=30)
-
+        THEN process_instagram_post.delay() is called for EACH post (each
+        UPDATE claims exactly one row)"""
         # Setup mock session
         mock_session = MagicMock()
         mock_session_class.return_value.__enter__ = Mock(return_value=mock_session)
         mock_session_class.return_value.__exit__ = Mock(return_value=False)
 
-        # Mock the query result with multiple posts
-        mock_result = MagicMock()
-        mock_result.scalars.return_value.all.return_value = [mock_post_pending, post2]
-        mock_session.execute.return_value = mock_result
+        # SELECT returns 2 rows; each UPDATE returns rowcount=1
+        select_result = MagicMock()
+        select_result.all.return_value = [(1, 10), (2, 10)]
+        update_result_1 = MagicMock()
+        update_result_1.rowcount = 1
+        update_result_2 = MagicMock()
+        update_result_2.rowcount = 1
+        mock_session.execute.side_effect = [
+            select_result,
+            update_result_1,
+            update_result_2,
+        ]
 
         # Execute task
         result = check_scheduled_posts.run()
@@ -228,28 +236,68 @@ class TestCheckScheduledPosts:
     def test_status_transition_to_processing(
         self, mock_process_task, mock_session_class, mock_post_pending
     ):
-        """Scenario: Transition from PENDING to PROCESSING
-        GIVEN a post with status=PENDING and scheduled_at <= now()
+        """Scenario: Atomic claim transitions SCHEDULED to PROCESSING
+        GIVEN a post with status=SCHEDULED and scheduled_at <= now()
         WHEN check_scheduled_posts dispatches the task
-        THEN post status is updated to PROCESSING first
-        AND then task is dispatched"""
+        THEN a conditional UPDATE claims the row (status=SCHEDULED -> PROCESSING)
+        AND the rowcount is 1 AND then the task is dispatched"""
         # Setup mock session
         mock_session = MagicMock()
         mock_session_class.return_value.__enter__ = Mock(return_value=mock_session)
         mock_session_class.return_value.__exit__ = Mock(return_value=False)
 
-        # Mock the query result
-        mock_result = MagicMock()
-        mock_result.scalars.return_value.all.return_value = [mock_post_pending]
-        mock_session.execute.return_value = mock_result
+        # SELECT returns the candidate; UPDATE returns rowcount=1 (claim won)
+        select_result = MagicMock()
+        select_result.all.return_value = [(1, 10)]
+        update_result = MagicMock()
+        update_result.rowcount = 1
+        mock_session.execute.side_effect = [select_result, update_result]
 
         # Execute task
         check_scheduled_posts.run()
 
-        # Verify status transition happened BEFORE dispatch
-        assert mock_post_pending.status == PostStatus.PROCESSING
+        # Verify atomic claim committed + dispatch fired
         mock_session.commit.assert_called()
         mock_process_task.delay.assert_called_once()
+
+    @patch("app.worker.SyncSessionLocal")
+    @patch("app.worker.process_instagram_post")
+    def test_concurrent_dispatch_is_atomic(
+        self, mock_process_task, mock_session_class, mock_post_pending
+    ):
+        """Regression: concurrent beat cycles must not double-dispatch the same post.
+
+        GIVEN multiple check_scheduled_posts tasks run concurrently (e.g. queued
+        in Redis while the worker container was down during a deploy), and all
+        of them SELECT the same SCHEDULED post before any commits
+        WHEN each check_scheduled_posts attempt runs the atomic-claim UPDATE
+        THEN only the first UPDATE affects 1 row (claims the post); subsequent
+        UPDATEs affect 0 rows and do NOT dispatch process_instagram_post again.
+
+        This prevents the incident where post 59 was published to Instagram 4
+        times in 11 seconds because 4 beat cycles raced on the same row.
+        """
+        # Setup mock session
+        mock_session = MagicMock()
+        mock_session_class.return_value.__enter__ = Mock(return_value=mock_session)
+        mock_session_class.return_value.__exit__ = Mock(return_value=False)
+
+        # SELECT sees the post as SCHEDULED (concurrent, before any commit)
+        select_result = MagicMock()
+        select_result.all.return_value = [(59, 10)]
+        # UPDATE rowcount=0: another worker already claimed it (the race-loss
+        # case — exactly what should prevent a duplicate dispatch)
+        update_result = MagicMock()
+        update_result.rowcount = 0
+        mock_session.execute.side_effect = [select_result, update_result]
+
+        # Execute task
+        result = check_scheduled_posts.run()
+
+        # Verify claim lost → no dispatch
+        assert result["found"] == 1
+        assert result["dispatched"] == 0
+        mock_process_task.delay.assert_not_called()
 
     @patch("app.worker.SyncSessionLocal")
     @patch("app.worker.process_instagram_post")

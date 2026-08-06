@@ -169,43 +169,72 @@ def check_scheduled_posts(self) -> dict:
     Beat task: query for scheduled posts and dispatch processing tasks.
 
     Runs every 60 seconds via Celery Beat. Finds posts with status=SCHEDULED
-    and scheduled_at <= now(), transitions them to PENDING, and dispatches
+    and scheduled_at <= now(), transitions them to PROCESSING, and dispatches
     process_instagram_post for each.
 
-    Idempotent: skips posts that are already PENDING or PROCESSING.
+    Atomic claim: posts are claimed via a conditional UPDATE (status='scheduled'
+    in the WHERE clause) and only dispatched when the rowcount is exactly 1.
+    This prevents the race where multiple beat cycles (e.g. queued while the
+    worker was down) run concurrently and each dispatch the same post, which
+    would publish it multiple times to Instagram.
     """
     from datetime import datetime, timezone
-    from sqlalchemy import select
+    from sqlalchemy import select, update
 
     dispatched_count = 0
     total_found = 0
 
     def _query_and_dispatch():
         nonlocal dispatched_count, total_found
+        now = datetime.now(timezone.utc)
         with SyncSessionLocal() as session:
+            # Find candidate posts (still SCHEDULED, due) — only need id + user_id
             stmt = (
-                select(Post)
+                select(Post.id, Post.user_id)
                 .where(
                     Post.status == PostStatus.SCHEDULED,
-                    Post.scheduled_at <= datetime.now(timezone.utc),
+                    Post.scheduled_at <= now,
                 )
                 .order_by(Post.scheduled_at.asc())
             )
-            posts = session.execute(stmt).scalars().all()
-            total_found = len(posts)
+            candidates = session.execute(stmt).all()
+            post_ids = [row[0] for row in candidates]
+            user_ids = {row[0]: row[1] for row in candidates}
+            total_found = len(post_ids)
 
-            for post in posts:
+            for post_id in post_ids:
                 try:
-                    post.status = PostStatus.PROCESSING
-                    post.processing_started_at = datetime.now(timezone.utc)
+                    # Atomic claim: only transition if still SCHEDULED.
+                    # If another concurrent worker already claimed it, this
+                    # UPDATE affects 0 rows and we skip dispatch.
+                    claim_stmt = (
+                        update(Post)
+                        .where(
+                            Post.id == post_id,
+                            Post.status == PostStatus.SCHEDULED,
+                        )
+                        .values(
+                            status=PostStatus.PROCESSING,
+                            processing_started_at=datetime.now(timezone.utc),
+                            error_message=None,
+                        )
+                    )
+                    result = session.execute(claim_stmt)
                     session.commit()
-                    process_instagram_post.delay(post.id)
-                    _publish_post_event(post.id, "processing", post.user_id)
-                    dispatched_count += 1
-                    logger.info(f"Dispatched post {post.id} for processing")
+
+                    if result.rowcount == 1:
+                        process_instagram_post.delay(post_id)
+                        _publish_post_event(post_id, "processing", user_ids[post_id])
+                        dispatched_count += 1
+                        logger.info(f"Dispatched post {post_id} for processing")
+                    else:
+                        # Another concurrent worker already claimed it — skip
+                        logger.debug(
+                            f"Post {post_id} already claimed by another worker; skipping"
+                        )
                 except Exception as e:
                     session.rollback()
-                    logger.error(f"Failed to dispatch post {post.id}: {e}")
+                    logger.error(f"Failed to dispatch post {post_id}: {e}")
 
             return total_found
 
@@ -382,6 +411,36 @@ def _process_post_sync(post_id: int) -> None:
                 raise ValueError(f"Post {post_id} not found or missing related data")
 
             post, ig_account, media_file = row
+
+            # Idempotency guard: if this post was already successfully
+            # published (ig_media_id is set), do not re-publish — regardless
+            # of the current status. This protects against:
+            #   1. Duplicate dispatches racing in check_scheduled_posts
+            #      (multiple beat cycles queued while worker was down).
+            #   2. Retries that fire after a successful publish but a failed
+            #      post-publish side-effect (e.g. insights cache invalidation).
+            # In case (2) the status may have been flipped to RETRYING by the
+            # task wrapper — restore it to PUBLISHED so it isn't stuck.
+            if post.ig_media_id:
+                already_published = post.status == PostStatus.PUBLISHED
+                if not already_published:
+                    logger.info(
+                        f"Post {post_id} already has ig_media_id="
+                        f"{post.ig_media_id} (status={post.status.value}); "
+                        f"restoring to PUBLISHED"
+                    )
+                    post.status = PostStatus.PUBLISHED
+                    post.processing_started_at = None
+                    if not post.published_at:
+                        post.published_at = func.now()
+                    db.commit()
+                    _publish_post_event(post.id, "published", post.user_id)
+                else:
+                    logger.info(
+                        f"Post {post_id} already published (ig_media_id="
+                        f"{post.ig_media_id}); skipping re-publish"
+                    )
+                return
 
             # Step 2: Update status to PROCESSING, clear any previous error
             post.status = PostStatus.PROCESSING

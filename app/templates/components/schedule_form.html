@@ -1,12 +1,9 @@
 {# Schedule post form component #}
 {# Used in the Agenda view for creating scheduled posts #}
+{# Submits via fetch (AJAX) — does not rely on htmx intercepting the form submit #}
 
-<form id="schedule-form" class="space-y-4"
-      hx-encoding="multipart/form-data"
-      hx-post="/dashboard/schedule/post"
-      hx-target="#form-message"
-      hx-swap="innerHTML">
-    
+<form id="schedule-form" class="space-y-4" enctype="multipart/form-data">
+
     <!-- Image Upload -->
     <div>
         <label for="schedule-file" class="block text-sm font-medium text-gray-700 mb-1">
@@ -96,26 +93,19 @@
     </div>
 
     <!-- Form message area -->
-    <div id="form-message"></div>
+    <div id="schedule-form-message"></div>
 </form>
 
 <script>
-// Set minimum date to today
-document.addEventListener('DOMContentLoaded', function() {
-    const today = new Date();
-    const minDate = today.toISOString().split('T')[0];
-    document.getElementById('schedule-date').min = minDate;
-});
-
 function previewScheduleImage(input) {
     if (input.files && input.files[0]) {
         const file = input.files[0];
-        
+
         if (!file.type.startsWith('image/')) {
             showToast('error', 'Por favor selecciona una imagen válida');
             return;
         }
-        
+
         const reader = new FileReader();
         reader.onload = function(e) {
             document.getElementById('schedule-preview-img').src = e.target.result;
@@ -136,55 +126,117 @@ function removeScheduleImage() {
     document.getElementById('schedule-image-preview').classList.add('hidden');
 }
 
+function clearScheduleForm() {
+    const form = document.getElementById('schedule-form');
+    if (form) form.reset();
+    removeScheduleImage();
+    const validation = document.getElementById('schedule-validation');
+    if (validation) validation.classList.add('hidden');
+    const msg = document.getElementById('schedule-form-message');
+    if (msg) msg.innerHTML = '';
+}
+
 // Drag and drop support
-const dropZone = document.getElementById('schedule-drop-zone');
-const fileInput = document.getElementById('schedule-file');
+const scheduleDropZone = document.getElementById('schedule-drop-zone');
+const scheduleFileInput = document.getElementById('schedule-file');
 
-dropZone.addEventListener('dragover', function(e) {
+scheduleDropZone.addEventListener('dragover', function(e) {
     e.preventDefault();
     e.stopPropagation();
-    dropZone.classList.add('border-purple-400', 'bg-purple-50');
+    scheduleDropZone.classList.add('border-purple-400', 'bg-purple-50');
 });
 
-dropZone.addEventListener('dragleave', function(e) {
+scheduleDropZone.addEventListener('dragleave', function(e) {
     e.preventDefault();
     e.stopPropagation();
-    dropZone.classList.remove('border-purple-400', 'bg-purple-50');
+    scheduleDropZone.classList.remove('border-purple-400', 'bg-purple-50');
 });
 
-dropZone.addEventListener('drop', function(e) {
+scheduleDropZone.addEventListener('drop', function(e) {
     e.preventDefault();
     e.stopPropagation();
-    dropZone.classList.remove('border-purple-400', 'bg-purple-50');
-    
+    scheduleDropZone.classList.remove('border-purple-400', 'bg-purple-50');
+
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
         const file = e.dataTransfer.files[0];
         if (file.type.startsWith('image/')) {
-            fileInput.files = e.dataTransfer.files;
-            previewScheduleImage(fileInput);
+            scheduleFileInput.files = e.dataTransfer.files;
+            previewScheduleImage(scheduleFileInput);
         } else {
             showToast('error', 'Por favor selecciona una imagen');
         }
     }
 });
 
-// Client-side validation
-document.getElementById('schedule-form').addEventListener('submit', function(e) {
+// Form submission via fetch (AJAX) — no htmx dependency
+document.getElementById('schedule-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const form = this;
+    const submitBtn = document.getElementById('schedule-submit-btn');
+    const fileInput = document.getElementById('schedule-file');
     const dateInput = document.getElementById('schedule-date');
     const timeInput = document.getElementById('schedule-time');
     const validation = document.getElementById('schedule-validation');
-    
+    const message = document.getElementById('schedule-form-message');
+
+    // Client-side validation: file
+    if (!fileInput.files || !fileInput.files[0]) {
+        showToast('error', 'Selecciona una imagen');
+        return;
+    }
+
+    // Client-side validation: future datetime
     const selectedDateTime = new Date(`${dateInput.value}T${timeInput.value}`);
     const now = new Date();
-    
     if (selectedDateTime <= now) {
-        e.preventDefault();
         validation.textContent = 'La fecha y hora deben ser en el futuro';
         validation.classList.remove('hidden');
-        return false;
+        return;
     }
-    
     validation.classList.add('hidden');
-    return true;
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Programando...';
+
+    try {
+        // Build a Date in the user's local timezone from the picked date+time,
+        // then send the UTC equivalent so the server (which parses as UTC) is
+        // consistent with what the user selected in their browser.
+        const localPicked = new Date(`${dateInput.value}T${timeInput.value}`);
+        const pad = (n) => String(n).padStart(2, '0');
+        const utcDate = `${localPicked.getUTCFullYear()}-${pad(localPicked.getUTCMonth() + 1)}-${pad(localPicked.getUTCDate())}`;
+        const utcTime = `${pad(localPicked.getUTCHours())}:${pad(localPicked.getUTCMinutes())}`;
+
+        const formData = new FormData(form);
+        formData.set('scheduled_date', utcDate);
+        formData.set('scheduled_time', utcTime);
+        const response = await fetch('/dashboard/schedule/post', {
+            method: 'POST',
+            body: formData
+        });
+
+        const data = await response.json();
+
+        if (response.ok && data.success) {
+            showToast('success', 'Publicación programada');
+            clearScheduleForm();
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Programar Publicación';
+            if (typeof refreshScheduledPosts === 'function') {
+                refreshScheduledPosts();
+            }
+        } else {
+            showToast('error', data.error || 'Error al programar la publicación');
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Programar Publicación';
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        showToast('error', 'Error de conexión');
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Programar Publicación';
+    }
 });
 </script>
